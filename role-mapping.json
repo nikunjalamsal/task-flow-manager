@@ -1,0 +1,39 @@
+{
+  "managers": [
+    "nlamsal",
+    "admin"
+  ],
+  "bss_team": [
+    "bssteam"
+  ],
+  "viewers": [
+    "viewer"
+  ],
+  "members": [],
+  "emails": {
+    "nlamsal": "nlamsal@snpl.net.np",
+    "admin": "admin@snpl.net.np"
+  },
+  "dummy_users": {
+    "dummy_viewer": {
+      "password": "viewer@123",
+      "name": "Dummy Viewer",
+      "role": "viewer"
+    },
+    "dummy_manager": {
+      "password": "manager@123",
+      "name": "Dummy Manager",
+      "role": "manager"
+    },
+    "dummy_bss": {
+      "password": "bss@123",
+      "name": "Dummy BSS Team",
+      "role": "bss_team"
+    },
+    "dummy_member": {
+      "password": "member@123",
+      "name": "Dummy Member",
+      "role": "member"
+    }
+  }
+}
