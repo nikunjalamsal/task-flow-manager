@@ -8,10 +8,10 @@ import ManagerApprovals from "@/components/ManagerApprovals";
 import AllTasks from "@/components/AllTasks";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, ClipboardList, LogOut, Shield, LayoutDashboard, Download } from "lucide-react";
+import { CalendarDays, ClipboardList, LogOut, Shield, LayoutDashboard, Download, User as UserIcon, PlayCircle } from "lucide-react";
 
 const Dashboard: React.FC = () => {
-  const { user, logout, isManager, isViewer } = useAuth();
+  const { user, logout, isManager, isViewer, isBssTeam } = useAuth();
   const { tasks, getPendingApprovalTasks } = useTasks();
 
   const pendingTasks = getPendingApprovalTasks();
@@ -20,12 +20,20 @@ const Dashboard: React.FC = () => {
     (t.status === "delete_requested" && t.assigneeId === user?.id)
   );
   const pendingCount = myPendingApprovals.length;
-  const myTasks = isManager ? tasks : tasks.filter((t) => t.assigneeId === user?.id);
-  const activeTasks = myTasks.filter((t) => t.status === "in_progress").length;
-  const completedTasks = myTasks.filter((t) => t.status === "completed").length;
+
+  // Stats based on ALL tasks (visible to everyone)
+  const totalTasks = tasks.length;
+  const activeTasks = tasks.filter((t) => t.status === "in_progress").length;
+  const completedTasks = tasks.filter((t) => t.status === "completed").length;
+
+  // My tasks = tasks created by current user
+  const myTaskCount = tasks.filter((t) => t.assigneeId === user?.id).length;
+
+  // Tasks to start = approved but not yet started
+  const tasksToStart = tasks.filter((t) => t.status === "approved").length;
 
   const handleExport = () => {
-    const tasksToExport = isManager ? tasks : myTasks;
+    const tasksToExport = isManager ? tasks : tasks.filter((t) => t.assigneeId === user?.id);
     exportTasksToExcel(tasksToExport);
   };
 
@@ -46,8 +54,8 @@ const Dashboard: React.FC = () => {
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-foreground">{user?.name}</p>
               <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                {isManager && <Shield className="h-3 w-3" />}
-                {isManager ? "Manager" : isViewer ? "Viewer" : "Team Member"}
+                {(isManager || isBssTeam) && <Shield className="h-3 w-3" />}
+                {isManager ? "Manager" : isBssTeam ? "BSS Team" : isViewer ? "Viewer" : "Team Member"}
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={logout} className="gap-1.5">
@@ -58,12 +66,20 @@ const Dashboard: React.FC = () => {
       </header>
 
       <main className="container py-6 space-y-6">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard label="Total Tasks" value={myTasks.length} icon={<ClipboardList className="h-5 w-5" />} />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <StatCard label="Total Tasks" value={totalTasks} icon={<ClipboardList className="h-5 w-5" />} />
           <StatCard label="Active" value={activeTasks} icon={<LayoutDashboard className="h-5 w-5" />} color="text-primary" />
           <StatCard label="Completed" value={completedTasks} icon={<CalendarDays className="h-5 w-5" />} color="text-success" />
-          {isManager && <StatCard label="Pending Approval" value={pendingCount} icon={<Shield className="h-5 w-5" />} color={pendingCount > 0 ? "text-destructive" : "text-muted-foreground"} />}
+          <StatCard label="My Tasks" value={myTaskCount} icon={<UserIcon className="h-5 w-5" />} color="text-accent-foreground" />
+          <StatCard label="Tasks To Start" value={tasksToStart} icon={<PlayCircle className="h-5 w-5" />} color="text-amber-600" />
         </div>
+
+        {(isManager || isBssTeam) && pendingCount > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-center gap-2 text-sm text-amber-800">
+            <Shield className="h-4 w-4" />
+            <span><strong>{pendingCount}</strong> pending approval{pendingCount > 1 ? "s" : ""} require your attention.</span>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           {!isViewer && (

@@ -10,7 +10,7 @@ const clearStoredSession = () => {
   localStorage.removeItem(SESSION_ACTIVITY_KEY);
 };
 
-const getStoredUser = (): User | null => {
+const getStoredUser = (): (User & { isBssTeam?: boolean }) | null => {
   const savedUser = localStorage.getItem(USER_STORAGE_KEY);
   const lastActivity = Number(localStorage.getItem(SESSION_ACTIVITY_KEY) || "0");
 
@@ -33,12 +33,13 @@ interface AuthContextType {
   logout: () => void;
   isManager: boolean;
   isViewer: boolean;
+  isBssTeam: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [user, setUser] = useState<(User & { isBssTeam?: boolean }) | null>(() => getStoredUser());
 
   const login = useCallback(async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -51,17 +52,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
 
       if (res.ok && data.success && data.user) {
-        const u: User = {
+        const isBssTeam = data.user.role === "bss_team";
+        const u: User & { isBssTeam?: boolean } = {
           id: data.user.id,
           name: data.user.name,
           username: data.user.username,
           password: "",
-          role: data.user.role === "bss_team" ? "member" : data.user.role,
+          role: isBssTeam ? "member" : data.user.role,
+          isBssTeam,
         };
-        // Store bss_team flag separately so TaskContext can detect it
-        const stored = { ...u, isBssTeam: data.user.role === "bss_team" };
-        setUser(stored as User);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(stored));
+        setUser(u);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(u));
         localStorage.setItem(SESSION_ACTIVITY_KEY, Date.now().toString());
         return { success: true };
       }
@@ -113,8 +114,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user, logout]);
 
+  const isBssTeam = !!(user as any)?.isBssTeam;
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isManager: user?.role === "manager", isViewer: user?.role === "viewer" }}>
+    <AuthContext.Provider value={{ user, login, logout, isManager: user?.role === "manager", isViewer: user?.role === "viewer", isBssTeam }}>
       {children}
     </AuthContext.Provider>
   );
