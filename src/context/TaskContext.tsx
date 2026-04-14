@@ -234,12 +234,24 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changeTaskDate = useCallback(
     (taskId: string, newDate: string, userId: string, userName: string, comment: string) => {
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) return { success: false, message: "Task not found." };
+
+      const isOwner = task.assigneeId === userId;
       const existingCount = tasks.filter((t) => t.assignedDate === newDate && t.status !== "rejected" && t.id !== taskId).length;
       const today = startOfDay(new Date());
       const targetDate = startOfDay(new Date(newDate));
       const daysDiff = differenceInCalendarDays(targetDate, today);
 
-      if (daysDiff < URGENCY_THRESHOLD_DAYS || existingCount >= 2) {
+      // If not the owner, or urgent/overloaded date — require approval
+      const needsApproval = !isOwner || daysDiff < URGENCY_THRESHOLD_DAYS || existingCount >= 2;
+
+      if (needsApproval) {
+        const reasonParts: string[] = [];
+        if (!isOwner) reasonParts.push(`Date change requested by ${userName}. Awaiting owner (${task.assigneeName}) approval.`);
+        if (daysDiff < URGENCY_THRESHOLD_DAYS) reasonParts.push("Urgent deadline.");
+        if (existingCount >= 2) reasonParts.push(`Date already has ${existingCount} task(s).`);
+
         updateAndSave((prev) =>
           prev.map((t) =>
             t.id === taskId
@@ -255,7 +267,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       id: generateId(),
                       userId,
                       userName,
-                      text: comment || `Date changed to ${newDate}. Requires manager approval.`,
+                      text: comment || reasonParts.join(" ") || `Date changed to ${newDate}. Requires approval.`,
                       action: "date_changed" as const,
                       timestamp: new Date().toISOString(),
                     },
@@ -264,8 +276,13 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               : t
           )
         );
+
+        if (!isOwner) {
+          const ownerUsername = task.assigneeId.replace("ldap-", "").replace("dummy-", "");
+          notifyApi.notifyUser(ownerUsername);
+        }
         notifyApi.notifyManagers();
-        return { success: true, message: "Date changed. Requires manager approval." };
+        return { success: true, message: !isOwner ? `Date change sent to ${task.assigneeName} for approval.` : "Date changed. Requires manager approval." };
       }
 
       updateAndSave((prev) =>
