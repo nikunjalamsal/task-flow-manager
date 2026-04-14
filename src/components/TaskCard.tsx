@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -42,6 +43,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
   const [newDate, setNewDate] = useState<Date>();
   const [changingDate, setChangingDate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ status: TaskStatus; label: string } | null>(null);
 
   const sc = statusConfig[task.status];
   const isBssTeam = !!(user as any)?.isBssTeam || user?.id === "bss-1" || user?.id === "dummy-bss";
@@ -58,6 +60,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
     updateTaskStatus(task.id, status, user.id, user.name, comment);
     toast.success(`Task ${status === "rejected" ? "rejected" : status === "approved" ? "approved" : status === "in_progress" ? "started" : "completed"}.`);
     setComment("");
+    setConfirmAction(null);
+  };
+
+  const requestConfirmAction = (status: TaskStatus, label: string) => {
+    setConfirmAction({ status, label });
   };
 
   const handleDateChange = () => {
@@ -199,7 +206,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
         {!isViewer && task.status === "approved" && isBssTeam && (
           <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted p-3">
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment before starting..." className="text-sm" />
-            <Button size="sm" onClick={() => handleAction("in_progress")} className="gap-1">
+            <Button size="sm" onClick={() => requestConfirmAction("in_progress", "Start Working")} className="gap-1">
               <Play className="h-3 w-3" /> Start Working
             </Button>
           </div>
@@ -208,7 +215,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
         {!isViewer && task.status === "in_progress" && isBssTeam && (
           <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted p-3">
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add completion notes..." className="text-sm" />
-            <Button size="sm" onClick={() => handleAction("bss_completed")} className="gap-1 bg-teal-600 text-white hover:bg-teal-700">
+            <Button size="sm" onClick={() => requestConfirmAction("bss_completed", "Mark BSS Complete")} className="gap-1 bg-teal-600 text-white hover:bg-teal-700">
               <CheckCircle2 className="h-3 w-3" /> Mark BSS Complete
             </Button>
           </div>
@@ -218,11 +225,29 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
           <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted p-3">
             <p className="text-xs text-muted-foreground">BSS Team has completed their work. Please verify and mark as fully complete.</p>
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add verification notes..." className="text-sm" />
-            <Button size="sm" onClick={() => handleAction("completed")} className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button size="sm" onClick={() => requestConfirmAction("completed", "Confirm Complete")} className="gap-1 bg-emerald-600 text-white hover:bg-emerald-700">
               <CheckCircle2 className="h-3 w-3" /> Confirm Complete
             </Button>
           </div>
         )}
+
+        {/* Confirmation dialog for status actions */}
+        <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm: {confirmAction?.label}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to "{confirmAction?.label}" for task "{task.title}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => confirmAction && handleAction(confirmAction.status)}>
+                {confirmAction?.label}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {changingDate && (
           <div className="mt-4 space-y-3 rounded-lg border border-border bg-muted p-3">
