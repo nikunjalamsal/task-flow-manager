@@ -1,4 +1,35 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+
+// Renders URLs in text as clickable hyperlinks
+const Linkify: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
+  const parts = useMemo(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const result: { type: "text" | "link"; value: string }[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = urlRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) result.push({ type: "text", value: text.slice(lastIndex, match.index) });
+      result.push({ type: "link", value: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) result.push({ type: "text", value: text.slice(lastIndex) });
+    return result;
+  }, [text]);
+
+  return (
+    <span className={className}>
+      {parts.map((p, i) =>
+        p.type === "link" ? (
+          <a key={i} href={p.value} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all hover:text-primary/80">
+            {p.value.length > 60 ? p.value.slice(0, 57) + "..." : p.value}
+          </a>
+        ) : (
+          <span key={i}>{p.value}</span>
+        )
+      )}
+    </span>
+  );
+};
 import { Task, TaskStatus } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import { useTasks } from "@/context/TaskContext";
