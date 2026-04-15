@@ -5,13 +5,14 @@ import { useTasks } from "@/context/TaskContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, CheckCircle2, Clock, Play, XCircle, MessageSquare, ArrowRight, Trash2, AlertTriangle } from "lucide-react";
+import { CalendarIcon, CheckCircle2, Clock, Play, XCircle, MessageSquare, ArrowRight, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const statusConfig: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
@@ -37,23 +38,25 @@ interface TaskCardProps {
 
 const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
   const { user, isManager, isViewer } = useAuth();
-  const { updateTaskStatus, changeTaskDate, deleteTask, approveDelete, rejectDelete } = useTasks();
+  const { updateTaskStatus, changeTaskDate, deleteTask, approveDelete, rejectDelete, editTask } = useTasks();
   const [detailOpen, setDetailOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [newDate, setNewDate] = useState<Date>();
   const [changingDate, setChangingDate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ status: TaskStatus; label: string } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editDescription, setEditDescription] = useState(task.description);
 
   const sc = statusConfig[task.status];
   const isBssTeam = !!(user as any)?.isBssTeam || user?.id === "bss-1" || user?.id === "dummy-bss";
 
-  // Completed tasks cannot be deleted at all
   const isCompleted = task.status === "completed";
-  // Only the creator can delete directly; others must request approval
   const isCreator = user && user.id === task.assigneeId;
   const canDelete = !isViewer && !isCompleted && user && isCreator;
   const canRequestDelete = !isViewer && !isCompleted && user && !isCreator;
+  const canEdit = !isViewer && !isCompleted && isCreator;
 
   const handleAction = (status: TaskStatus) => {
     if (!user) return;
@@ -98,10 +101,28 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
     setComment("");
   };
 
+  const handleEdit = () => {
+    if (!user) return;
+    const result = editTask(task.id, { title: editTitle, description: editDescription }, user.id, user.name);
+    if (result.success) {
+      toast.success(result.message);
+      setEditing(false);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const startEditing = () => {
+    setEditTitle(task.title);
+    setEditDescription(task.description);
+    setEditing(true);
+  };
+
   if (compact) {
     return (
       <button onClick={() => setDetailOpen(true)} className="w-full rounded-md border border-border bg-card p-2 text-left text-xs hover:shadow-md transition-shadow">
         <p className="font-medium truncate text-card-foreground">{task.title}</p>
+        <p className="mt-0.5 text-muted-foreground line-clamp-1">{task.description}</p>
         <div className="mt-1 flex items-center gap-1">
           <span className={cn("inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium", sc.color)}>
             {sc.icon} {sc.label}
@@ -118,10 +139,31 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="font-display font-semibold text-card-foreground truncate">{task.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
           </div>
-          <Badge variant="outline" className={cn("shrink-0", priorityColors[task.priority])}>{task.priority}</Badge>
+          <div className="flex items-center gap-1 shrink-0">
+            {canEdit && (
+              <Button size="sm" variant="ghost" onClick={startEditing} className="h-7 w-7 p-0">
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+            <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
+          </div>
         </div>
+
+        {/* Inline edit form */}
+        {editing && (
+          <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted p-3">
+            <label className="text-xs font-medium text-foreground">Title</label>
+            <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="text-sm" />
+            <label className="text-xs font-medium text-foreground">Description</label>
+            <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="text-sm" rows={3} />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleEdit} disabled={editTitle === task.title && editDescription === task.description}>Save</Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
           <span>📅 Launch: {format(new Date(task.assignedDate), "MMM d, yyyy")}</span>
@@ -140,7 +182,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
                 <CalendarIcon className="mr-1 h-3 w-3" /> Change Date
               </Button>
             )}
-            {/* Delete button - only creator can delete directly; others request deletion */}
             {!isViewer && !isCompleted && task.status !== "delete_requested" && (canDelete || canRequestDelete) && (
               <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)} className="text-destructive hover:text-destructive">
                 <Trash2 className="h-3 w-3" />
@@ -165,12 +206,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
           </div>
         )}
 
-        {/* Delete approval - shown to task creator when someone else requests deletion */}
         {task.status === "delete_requested" && user?.id === task.assigneeId && (
           <div className="mt-4 space-y-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
-            <p className="text-sm font-medium text-orange-800">
-              Someone has requested to delete this task. Do you approve?
-            </p>
+            <p className="text-sm font-medium text-orange-800">Someone has requested to delete this task. Do you approve?</p>
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment..." className="text-sm" />
             <div className="flex gap-2">
               <Button size="sm" variant="destructive" onClick={handleApproveDelete}>Approve Delete</Button>
@@ -179,12 +217,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
           </div>
         )}
 
-        {/* Manager can also approve/reject delete requests */}
         {task.status === "delete_requested" && isManager && user?.id !== task.assigneeId && (
           <div className="mt-4 space-y-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
-            <p className="text-sm font-medium text-orange-800">
-              Deletion requested. Awaiting creator approval. As manager, you can also act.
-            </p>
+            <p className="text-sm font-medium text-orange-800">Deletion requested. Awaiting creator approval. As manager, you can also act.</p>
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment..." className="text-sm" />
             <div className="flex gap-2">
               <Button size="sm" variant="destructive" onClick={handleApproveDelete}>Approve Delete</Button>
@@ -231,7 +266,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
           </div>
         )}
 
-        {/* Confirmation dialog for status actions */}
         <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -286,7 +320,10 @@ const TaskDetailDialog: React.FC<{ task: Task; open: boolean; onOpenChange: (v: 
           <DialogTitle className="font-display text-xl">{task.title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">{task.description}</p>
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground mb-1">Description</h4>
+            <p className="text-sm text-foreground">{task.description}</p>
+          </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><span className="text-muted-foreground">Status:</span> <span className={cn("ml-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", sc.color)}>{sc.icon} {sc.label}</span></div>
             <div><span className="text-muted-foreground">Priority:</span> <Badge variant="outline" className={cn("ml-1", priorityColors[task.priority])}>{task.priority}</Badge></div>
