@@ -1,6 +1,23 @@
 import React, { useState, useMemo } from "react";
 
 // Renders URLs in text as clickable hyperlinks
+/** Extract a friendly display name from a URL when possible */
+const getFriendlyUrlLabel = (url: string): string => {
+  try {
+    const u = new URL(url);
+    // SharePoint: extract file= param
+    const fileParam = u.searchParams.get("file");
+    if (fileParam) return decodeURIComponent(fileParam);
+    // Generic: try last meaningful path segment
+    const segments = u.pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last && last.includes(".")) return decodeURIComponent(last);
+    if (last && last.length > 3) return decodeURIComponent(last);
+  } catch { /* ignore */ }
+  // Fallback: truncate
+  return url.length > 60 ? url.slice(0, 57) + "..." : url;
+};
+
 const Linkify: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
   const parts = useMemo(() => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -20,8 +37,8 @@ const Linkify: React.FC<{ text: string; className?: string }> = ({ text, classNa
     <span className={className}>
       {parts.map((p, i) =>
         p.type === "link" ? (
-          <a key={i} href={p.value} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all hover:text-primary/80">
-            {p.value.length > 60 ? p.value.slice(0, 57) + "..." : p.value}
+          <a key={i} href={p.value} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all hover:text-primary/80" title={p.value}>
+            {getFriendlyUrlLabel(p.value)}
           </a>
         ) : (
           <span key={i}>{p.value}</span>
