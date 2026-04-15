@@ -1,4 +1,35 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+
+// Renders URLs in text as clickable hyperlinks
+const Linkify: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
+  const parts = useMemo(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const result: { type: "text" | "link"; value: string }[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = urlRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) result.push({ type: "text", value: text.slice(lastIndex, match.index) });
+      result.push({ type: "link", value: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) result.push({ type: "text", value: text.slice(lastIndex) });
+    return result;
+  }, [text]);
+
+  return (
+    <span className={className}>
+      {parts.map((p, i) =>
+        p.type === "link" ? (
+          <a key={i} href={p.value} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all hover:text-primary/80">
+            {p.value.length > 60 ? p.value.slice(0, 57) + "..." : p.value}
+          </a>
+        ) : (
+          <span key={i}>{p.value}</span>
+        )
+      )}
+    </span>
+  );
+};
 import { Task, TaskStatus } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import { useTasks } from "@/context/TaskContext";
@@ -122,7 +153,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
     return (
       <button onClick={() => setDetailOpen(true)} className="w-full rounded-md border border-border bg-card p-2 text-left text-xs hover:shadow-md transition-shadow">
         <p className="font-medium truncate text-card-foreground">{task.title}</p>
-        <p className="mt-0.5 text-muted-foreground line-clamp-1">{task.description}</p>
+        <p className="mt-0.5 text-muted-foreground line-clamp-1"><Linkify text={task.description} /></p>
         <div className="mt-1 flex items-center gap-1">
           <span className={cn("inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium", sc.color)}>
             {sc.icon} {sc.label}
@@ -139,7 +170,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact }) => {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="font-display font-semibold text-card-foreground truncate">{task.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{task.description}</p>
+            <p className="mt-1 text-sm text-muted-foreground"><Linkify text={task.description} /></p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {canEdit && (
@@ -322,7 +353,7 @@ const TaskDetailDialog: React.FC<{ task: Task; open: boolean; onOpenChange: (v: 
         <div className="space-y-4">
           <div>
             <h4 className="text-xs font-medium text-muted-foreground mb-1">Description</h4>
-            <p className="text-sm text-foreground">{task.description}</p>
+            <p className="text-sm text-foreground"><Linkify text={task.description} /></p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><span className="text-muted-foreground">Status:</span> <span className={cn("ml-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", sc.color)}>{sc.icon} {sc.label}</span></div>
