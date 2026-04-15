@@ -11,6 +11,7 @@ interface TaskContextType {
   addTask: (task: Omit<Task, "id" | "createdAt" | "comments" | "submittedDate" | "assignedTo" | "needsApproval" | "status" | "priority"> & { priority?: TaskPriority }) => { success: boolean; message: string };
   updateTaskStatus: (taskId: string, status: TaskStatus, userId: string, userName: string, comment: string) => void;
   changeTaskDate: (taskId: string, newDate: string, userId: string, userName: string, comment: string) => { success: boolean; message: string };
+  editTask: (taskId: string, updates: { title?: string; description?: string }, userId: string, userName: string) => { success: boolean; message: string };
   deleteTask: (taskId: string, userId: string, userName: string, comment: string) => { success: boolean; message: string };
   approveDelete: (taskId: string, userId: string, userName: string, comment: string) => void;
   rejectDelete: (taskId: string, userId: string, userName: string, comment: string) => void;
@@ -136,6 +137,45 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
     },
     [updateAndSave]
+  );
+
+  const editTask = useCallback(
+    (taskId: string, updates: { title?: string; description?: string }, userId: string, userName: string) => {
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task) return { success: false, message: "Task not found." };
+      if (task.assigneeId !== userId) return { success: false, message: "Only the task owner can edit." };
+      if (task.status === "completed") return { success: false, message: "Completed tasks cannot be edited." };
+
+      const changes: string[] = [];
+      if (updates.title && updates.title !== task.title) changes.push(`Title changed from "${task.title}" to "${updates.title}"`);
+      if (updates.description && updates.description !== task.description) changes.push(`Description changed from "${task.description}" to "${updates.description}"`);
+      if (changes.length === 0) return { success: false, message: "No changes made." };
+
+      updateAndSave((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                ...(updates.title ? { title: updates.title } : {}),
+                ...(updates.description ? { description: updates.description } : {}),
+                comments: [
+                  ...t.comments,
+                  {
+                    id: generateId(),
+                    userId,
+                    userName,
+                    text: changes.join(". "),
+                    action: "general" as const,
+                    timestamp: new Date().toISOString(),
+                  },
+                ],
+              }
+            : t
+        )
+      );
+      return { success: true, message: "Task updated successfully." };
+    },
+    [tasks, updateAndSave]
   );
 
   const deleteTask = useCallback(
@@ -316,6 +356,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         tasks,
         addTask,
+        editTask,
         updateTaskStatus,
         changeTaskDate,
         deleteTask,
