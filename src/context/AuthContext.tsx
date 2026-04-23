@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { User } from "@/lib/types";
+import roleMapping from "../../role-mapping.json";
 
 const USER_STORAGE_KEY = "cal_user";
 const SESSION_ACTIVITY_KEY = "cal_user_last_activity";
