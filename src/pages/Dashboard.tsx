@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTasks } from "@/context/TaskContext";
 import { exportTasksToExcel } from "@/lib/exportExcel";
@@ -8,7 +9,7 @@ import ManagerApprovals from "@/components/ManagerApprovals";
 import AllTasks from "@/components/AllTasks";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, ClipboardList, LogOut, Shield, LayoutDashboard, Download, User as UserIcon, PlayCircle } from "lucide-react";
+import { CalendarDays, ClipboardList, LogOut, Shield, LayoutDashboard, Download, User as UserIcon, PlayCircle, BookOpen } from "lucide-react";
 
 const Dashboard: React.FC = () => {
   const { user, logout, isManager, isViewer, isBssTeam } = useAuth();
@@ -51,6 +52,11 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link to="/catalog">
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <BookOpen className="h-3.5 w-3.5" /> Catalog
+              </Button>
+            </Link>
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-foreground">{user?.name}</p>
               <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
