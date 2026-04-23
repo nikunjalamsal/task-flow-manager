@@ -207,6 +207,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isCreator) {
         // Only the creator can delete directly
         updateAndSave((prev) => prev.filter((t) => t.id !== taskId));
+        notifyApi.notifyTaskEvent({
+          action: "deleted",
+          taskTitle: task.title,
+          actorName: userName,
+          assignedDate: task.assignedDate,
+        });
         return { success: true, message: "Task deleted successfully." };
       } else {
         // Everyone else must request deletion approval from the creator
