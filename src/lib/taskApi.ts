@@ -60,4 +60,21 @@ export const notifyApi = {
       // Silent fail
     }
   },
+
+  async notifyTaskEvent(payload: {
+    action: "added" | "edited" | "deleted";
+    taskTitle: string;
+    actorName: string;
+    assignedDate?: string;
+  }): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "task_event", ...payload }),
+      });
+    } catch {
+      // Silent fail
+    }
+  },
 };
