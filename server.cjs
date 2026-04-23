@@ -287,6 +287,55 @@ async function sendNotificationEmail(recipientEmail, recipientName, type) {
   }
 }
 
+async function sendTaskEventEmail(recipientEmail, recipientName, recipientRole, payload) {
+  if (!recipientEmail) {
+    console.log(`[notify] No email address found for ${recipientName}, skipping task-event notification.`);
+    return false;
+  }
+
+  const actionLabel =
+    payload.action === "added" ? "added" : payload.action === "edited" ? "edited" : "deleted";
+  const subject = `BSS Task Calendar — Task ${actionLabel}: ${payload.taskTitle}`;
+  const salutation = recipientRole === "bss_team" ? `Dear ${recipientName}` : `Dear ${recipientName}`;
+  const dateLine = payload.assignedDate ? `<p><b>Scheduled date:</b> ${payload.assignedDate}</p>` : "";
+
+  const html = `
+    <p>${salutation},</p>
+    <p>A task has been <b>${actionLabel}</b> in the <b>BSS Task Calendar</b>.</p>
+    <p><b>Title:</b> ${payload.taskTitle}</p>
+    <p><b>${actionLabel === "added" ? "Created by" : actionLabel === "edited" ? "Edited by" : "Deleted by"}:</b> ${payload.actorName}</p>
+    ${dateLine}
+    <p><b>When:</b> ${new Date().toLocaleString()}</p>
+    <p>Open the calendar: <a href="${APP_URL}">${APP_URL}</a></p>
+    <br/>
+    <p>Regards,<br/>BSS Task Calendar</p>
+  `;
+
+  try {
+    console.log(`[mail] Sending task-event (${actionLabel}) notification to ${recipientEmail}`);
+    await smtpTransporter.sendMail({ from: EMAIL_FROM, to: recipientEmail, subject, html });
+    return true;
+  } catch (error) {
+    console.error(`[mail] Failed to send task-event email to ${recipientEmail}: ${error.message}`);
+    return false;
+  }
+}
+
+async function notifyTaskEvent(payload) {
+  const mapping = getRoleMapping();
+  const recipients = [
+    ...mapping.managers.map((u) => ({ username: u, role: "manager" })),
+    ...mapping.bss_team.map((u) => ({ username: u, role: "bss_team" })),
+  ];
+
+  let delivered = 0;
+  for (const r of recipients) {
+    const email = await resolveEmail(r.username);
+    if (await sendTaskEventEmail(email, r.username, r.role, payload)) delivered += 1;
+  }
+  return { attempted: recipients.length, delivered };
+}
+
 async function notifyManagers() {
   const { managers } = getRoleMapping();
 
