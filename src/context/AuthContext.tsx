@@ -43,6 +43,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<(User & { isBssTeam?: boolean }) | null>(() => getStoredUser());
 
   const login = useCallback(async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const buildSuccessUser = (payload: { id: string; name: string; username: string; role: string }) => {
+      const isBssTeam = payload.role === "bss_team";
+      const u: User & { isBssTeam?: boolean } = {
+        id: payload.id,
+        name: payload.name,
+        username: payload.username,
+        password: "",
+        role: isBssTeam ? "member" : (payload.role as User["role"]),
+        isBssTeam,
+      };
+      setUser(u);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(u));
+      localStorage.setItem(SESSION_ACTIVITY_KEY, Date.now().toString());
+    };
+
+    const tryDummyFallback = (): { success: boolean; error?: string } => {
+      const dummies = (roleMapping as any)?.dummy_users || {};
+      const entry = dummies[username];
+      if (entry && entry.password === password) {
+        buildSuccessUser({
+          id: `dummy-${username}`,
+          name: entry.name || username,
+          username,
+          role: entry.role,
+        });
+        return { success: true };
+      }
+      return { success: false, error: "Invalid credentials" };
+    };
+
     try {
       const res = await fetch("/api/login", {
         method: "POST",
@@ -53,23 +83,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
 
       if (res.ok && data.success && data.user) {
-        const isBssTeam = data.user.role === "bss_team";
-        const u: User & { isBssTeam?: boolean } = {
-          id: data.user.id,
-          name: data.user.name,
-          username: data.user.username,
-          password: "",
-          role: isBssTeam ? "member" : data.user.role,
-          isBssTeam,
-        };
-        setUser(u);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(u));
-        localStorage.setItem(SESSION_ACTIVITY_KEY, Date.now().toString());
+        buildSuccessUser(data.user);
         return { success: true };
       }
 
+      const fallback = tryDummyFallback();
+      if (fallback.success) return fallback;
+
       return { success: false, error: data.error || "Authentication failed" };
     } catch (err: any) {
+      // Server unreachable (e.g. Lovable preview) — fall back to dummy users
+      const fallback = tryDummyFallback();
+      if (fallback.success) return fallback;
       return { success: false, error: "Cannot connect to server" };
     }
   }, []);
