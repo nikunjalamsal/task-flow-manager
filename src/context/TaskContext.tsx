@@ -95,6 +95,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         notifyApi.notifyManagers();
       }
 
+      // Notify BSS team + Managers about the new task (summary)
+      notifyApi.notifyTaskEvent({
+        action: "added",
+        taskTitle: newTask.title,
+        actorName: newTask.assigneeName,
+        assignedDate: newTask.assignedDate,
+      });
+
       return {
         success: true,
         message: needsApproval ? "Task sent for manager approval." : "Task auto-approved and added.",
