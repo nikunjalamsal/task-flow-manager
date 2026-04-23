@@ -457,7 +457,8 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === "/api/notify" && req.method === "POST") {
     try {
-      const { type, username } = JSON.parse(await readBody(req));
+      const body = JSON.parse(await readBody(req));
+      const { type, username } = body;
       console.log(`[notify] Incoming request type=${type}${username ? ` username=${username}` : ""}`);
 
       if (type === "manager") {
@@ -473,6 +474,18 @@ const server = http.createServer(async (req, res) => {
         const delivered = await sendNotificationEmail(email, username, "user");
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, delivered }));
+        return;
+      }
+
+      if (type === "task_event" && body.action && body.taskTitle) {
+        const result = await notifyTaskEvent({
+          action: body.action,
+          taskTitle: body.taskTitle,
+          actorName: body.actorName || "Unknown",
+          assignedDate: body.assignedDate,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, ...result }));
         return;
       }
 
