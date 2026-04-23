@@ -181,6 +181,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : t
         )
       );
+      notifyApi.notifyTaskEvent({
+        action: "edited",
+        taskTitle: updates.title || task.title,
+        actorName: userName,
+        assignedDate: task.assignedDate,
+      });
       return { success: true, message: "Task updated successfully." };
     },
     [tasks, updateAndSave]
