@@ -52,6 +52,11 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link to="/catalog">
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <BookOpen className="h-3.5 w-3.5" /> Catalog
+              </Button>
+            </Link>
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-foreground">{user?.name}</p>
               <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
