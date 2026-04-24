@@ -39,8 +39,10 @@ import {
   Search,
   History,
   Filter,
+  Download,
 } from "lucide-react";
 import { CatalogItem, CatalogResource } from "@/lib/catalogTypes";
+import { exportCatalogToExcel } from "@/lib/exportCatalogExcel";
 import { toast } from "sonner";
 
 const emptyItem = (): CatalogItem => ({
