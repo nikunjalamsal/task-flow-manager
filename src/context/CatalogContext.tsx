@@ -103,6 +103,18 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       draft: req.draft,
     };
     setRequests((prev) => [newReq, ...prev]);
+    // Notify managers for approval + bss_team for awareness
+    const productName =
+      req.draft?.productName ||
+      "(item)";
+    notifyApi.notifyCatalogEvent({
+      phase: "submitted",
+      requestType: req.type,
+      productName,
+      requestedBy: req.requestedBy,
+      reason: req.reason,
+      changesMade: req.draft?.changesMade,
+    });
     return { success: true, message: "Request submitted for manager approval." };
   }, []);
 
