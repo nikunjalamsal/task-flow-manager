@@ -557,6 +557,22 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      if (type === "catalog_event" && body.phase && body.requestType && body.productName) {
+        const result = await notifyCatalogEvent({
+          phase: body.phase,
+          requestType: body.requestType,
+          productName: body.productName,
+          requestedBy: body.requestedBy || "Unknown",
+          reviewedBy: body.reviewedBy,
+          reason: body.reason,
+          comment: body.comment,
+          changesMade: body.changesMade,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, ...result }));
+        return;
+      }
+
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid notification payload" }));
       return;
