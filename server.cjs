@@ -336,6 +336,74 @@ async function notifyTaskEvent(payload) {
   return { attempted: recipients.length, delivered };
 }
 
+async function sendCatalogEventEmail(recipientEmail, recipientName, payload) {
+  if (!recipientEmail) return false;
+
+  const typeLabel = payload.requestType.toUpperCase();
+  let subject;
+  let intro;
+  if (payload.phase === "submitted") {
+    subject = `Product Catalog — ${typeLabel} request needs approval: ${payload.productName}`;
+    intro = `A new <b>${typeLabel}</b> request has been submitted for catalog item <b>${payload.productName}</b> and is awaiting manager approval.`;
+  } else if (payload.phase === "approved") {
+    subject = `Product Catalog — ${typeLabel} approved: ${payload.productName}`;
+    intro = `A <b>${typeLabel}</b> request for catalog item <b>${payload.productName}</b> has been <b>approved</b>.`;
+  } else {
+    subject = `Product Catalog — ${typeLabel} rejected: ${payload.productName}`;
+    intro = `A <b>${typeLabel}</b> request for catalog item <b>${payload.productName}</b> has been <b>rejected</b>.`;
+  }
+
+  const changesLine = payload.changesMade
+    ? `<p><b>Changes Made:</b> ${payload.changesMade}</p>`
+    : "";
+  const reasonLine = payload.reason ? `<p><b>Reason:</b> ${payload.reason}</p>` : "";
+  const reviewerLine = payload.reviewedBy
+    ? `<p><b>Reviewed by:</b> ${payload.reviewedBy}</p>`
+    : "";
+  const commentLine = payload.comment
+    ? `<p><b>Reviewer comment:</b> ${payload.comment}</p>`
+    : "";
+
+  const html = `
+    <p>Dear ${recipientName},</p>
+    <p>${intro}</p>
+    <p><b>Requested by:</b> ${payload.requestedBy}</p>
+    ${changesLine}
+    ${reasonLine}
+    ${reviewerLine}
+    ${commentLine}
+    <p><b>When:</b> ${new Date().toLocaleString()}</p>
+    <p>Open the catalog: <a href="${APP_URL}/catalog">${APP_URL}/catalog</a></p>
+    <br/>
+    <p>Regards,<br/>BSS Task Calendar</p>
+  `;
+
+  try {
+    console.log(`[mail] Sending catalog-event (${payload.phase}/${payload.requestType}) to ${recipientEmail}`);
+    await smtpTransporter.sendMail({ from: EMAIL_FROM, to: recipientEmail, subject, html });
+    return true;
+  } catch (error) {
+    console.error(`[mail] Failed to send catalog-event email to ${recipientEmail}: ${error.message}`);
+    return false;
+  }
+}
+
+async function notifyCatalogEvent(payload) {
+  const mapping = getRoleMapping();
+  // Submitted -> notify managers (for approval) + bss_team (awareness)
+  // Approved/Rejected -> notify managers + bss_team
+  const usernames = Array.from(
+    new Set([...(mapping.managers || []), ...(mapping.bss_team || [])])
+  );
+
+  let delivered = 0;
+  for (const username of usernames) {
+    const email = await resolveEmail(username);
+    if (await sendCatalogEventEmail(email, username, payload)) delivered += 1;
+  }
+  return { attempted: usernames.length, delivered };
+}
+
 async function notifyManagers() {
   const { managers } = getRoleMapping();
 
@@ -483,6 +551,22 @@ const server = http.createServer(async (req, res) => {
           taskTitle: body.taskTitle,
           actorName: body.actorName || "Unknown",
           assignedDate: body.assignedDate,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, ...result }));
+        return;
+      }
+
+      if (type === "catalog_event" && body.phase && body.requestType && body.productName) {
+        const result = await notifyCatalogEvent({
+          phase: body.phase,
+          requestType: body.requestType,
+          productName: body.productName,
+          requestedBy: body.requestedBy || "Unknown",
+          reviewedBy: body.reviewedBy,
+          reason: body.reason,
+          comment: body.comment,
+          changesMade: body.changesMade,
         });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, ...result }));

@@ -77,4 +77,25 @@ export const notifyApi = {
       // Silent fail
     }
   },
+
+  async notifyCatalogEvent(payload: {
+    phase: "submitted" | "approved" | "rejected";
+    requestType: "add" | "modify" | "delete" | "close";
+    productName: string;
+    requestedBy: string;
+    reviewedBy?: string;
+    reason?: string;
+    comment?: string;
+    changesMade?: string;
+  }): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "catalog_event", ...payload }),
+      });
+    } catch {
+      // Silent fail
+    }
+  },
 };
