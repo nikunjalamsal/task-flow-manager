@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -15,10 +16,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, ArrowLeft, Plus, Pencil, Trash2, LogOut, Shield, BookOpen, CheckCircle2, XCircle } from "lucide-react";
-import { CatalogItem, CatalogResource, CatalogRequestType } from "@/lib/catalogTypes";
-import { generateId } from "@/lib/utils";
+import {
+  CalendarDays,
+  ArrowLeft,
+  Plus,
+  Pencil,
+  Trash2,
+  LogOut,
+  Shield,
+  BookOpen,
+  CheckCircle2,
+  XCircle,
+  Lock,
+  Search,
+  History,
+  Filter,
+} from "lucide-react";
+import { CatalogItem, CatalogResource } from "@/lib/catalogTypes";
 import { toast } from "sonner";
 
 const emptyItem = (): CatalogItem => ({
@@ -40,6 +62,7 @@ const emptyItem = (): CatalogItem => ({
   changeDetail: "",
   changeLog: [],
   createdAt: new Date().toISOString(),
+  status: "live",
 });
 
 const CatalogPage: React.FC = () => {
@@ -93,13 +116,7 @@ const CatalogPage: React.FC = () => {
               </TabsTrigger>
             </TabsList>
 
-            <ItemDialog
-              mode="add"
-              triggerButton={
-                <Button size="sm" className="gap-1.5">
-                  <Plus className="h-4 w-4" /> Request Add
-                </Button>
-              }
+            <AddDialog
               onSubmit={(draft, reason) => {
                 if (!user) return;
                 const result = submitRequest({
@@ -118,25 +135,35 @@ const CatalogPage: React.FC = () => {
           <TabsContent value="catalog" className="mt-6">
             <CatalogTable
               items={items}
-              onModify={(item) => {
-                if (!user) return null as any;
-                return (draft: CatalogItem, reason: string) => {
-                  const result = submitRequest({
-                    type: "modify",
-                    itemId: item.id,
-                    draft,
-                    reason,
-                    requestedBy: user.name,
-                    requestedById: user.id,
-                  });
-                  if (result.success) toast.success(result.message);
-                  else toast.error(result.message);
-                };
+              onModify={(item, draft, reason) => {
+                if (!user) return;
+                const result = submitRequest({
+                  type: "modify",
+                  itemId: item.id,
+                  draft,
+                  reason,
+                  requestedBy: user.name,
+                  requestedById: user.id,
+                });
+                if (result.success) toast.success(result.message);
+                else toast.error(result.message);
               }}
               onDelete={(item, reason) => {
                 if (!user) return;
                 const result = submitRequest({
                   type: "delete",
+                  itemId: item.id,
+                  reason,
+                  requestedBy: user.name,
+                  requestedById: user.id,
+                });
+                if (result.success) toast.success(result.message);
+                else toast.error(result.message);
+              }}
+              onClose={(item, reason) => {
+                if (!user) return;
+                const result = submitRequest({
+                  type: "close",
                   itemId: item.id,
                   reason,
                   requestedBy: user.name,
@@ -174,190 +201,311 @@ const CatalogPage: React.FC = () => {
 // ----- Catalog Table -----
 const CatalogTable: React.FC<{
   items: CatalogItem[];
-  onModify: (item: CatalogItem) => ((draft: CatalogItem, reason: string) => void) | null;
+  onModify: (item: CatalogItem, draft: CatalogItem, reason: string) => void;
   onDelete: (item: CatalogItem, reason: string) => void;
-}> = ({ items, onModify, onDelete }) => {
-  if (items.length === 0) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
-        No catalog items yet. Submit an add request.
-      </div>
-    );
-  }
+  onClose: (item: CatalogItem, reason: string) => void;
+}> = ({ items, onModify, onDelete, onClose }) => {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [channelFilter, setChannelFilter] = useState<string>("all");
+
+  const productTypes = useMemo(
+    () => Array.from(new Set(items.map((i) => i.productType).filter(Boolean))),
+    [items]
+  );
+  const channels = useMemo(
+    () => Array.from(new Set(items.map((i) => i.channelOpenTo).filter(Boolean))),
+    [items]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((it) => {
+      const status = it.status || "live";
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+      if (typeFilter !== "all" && it.productType !== typeFilter) return false;
+      if (channelFilter !== "all" && it.channelOpenTo !== channelFilter) return false;
+      if (!q) return true;
+      const haystack = [
+        it.productName,
+        it.productType,
+        it.productId,
+        it.productCode,
+        String(it.productPrice),
+        it.productValidity,
+        it.liveDate,
+        it.channelOpenTo,
+        it.closeDate,
+        it.changesMade,
+        it.changeMadeBy,
+        it.changeDetail,
+        ...it.resources.flatMap((r) => [r.subAccountId, r.subAccountName, r.resource]),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, search, statusFilter, typeFilter, channelFilter]);
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="w-full text-sm border-collapse">
-        <thead className="bg-muted/50 text-left">
-          <tr>
-            <Th>SN</Th>
-            <Th>Product Name</Th>
-            <Th>Product Type</Th>
-            <Th>Product ID</Th>
-            <Th>Product Code</Th>
-            <Th>Product Price</Th>
-            <Th>Product Resources</Th>
-            <Th>Product Validity</Th>
-            <Th>Live Date</Th>
-            <Th>Channel Open to</Th>
-            <Th>Close Date</Th>
-            <Th>Changes Date</Th>
-            <Th>Changes Made</Th>
-            <Th>Change Made By</Th>
-            <Th>Change Detail</Th>
-            <Th>Actions</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it) => (
-            <tr key={it.id} className="border-t border-border align-top hover:bg-muted/20">
-              <Td>{it.sn}</Td>
-              <Td>{it.productName}</Td>
-              <Td>{it.productType}</Td>
-              <Td>{it.productId}</Td>
-              <Td>{it.productCode}</Td>
-              <Td>{it.productPrice}</Td>
-              <Td>
-                <table className="text-xs border border-border">
-                  <tbody>
-                    <tr>
-                      <td className="border border-border px-1 font-medium">Sub account id</td>
-                      {it.resources.map((r, i) => (
-                        <td key={i} className="border border-border px-1">{r.subAccountId}</td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td className="border border-border px-1 font-medium">Subaccount name</td>
-                      {it.resources.map((r, i) => (
-                        <td key={i} className="border border-border px-1">{r.subAccountName}</td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td className="border border-border px-1 font-medium">Resource</td>
-                      {it.resources.map((r, i) => (
-                        <td key={i} className="border border-border px-1">{r.resource}</td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </Td>
-              <Td>{it.productValidity}</Td>
-              <Td>{it.liveDate}</Td>
-              <Td>{it.channelOpenTo}</Td>
-              <Td>{it.closeDate || "-"}</Td>
-              <Td>{it.changesDate || "-"}</Td>
-              <Td>{it.changesMade || "-"}</Td>
-              <Td>{it.changeMadeBy || "-"}</Td>
-              <Td>
-                <div className="whitespace-pre-wrap text-xs">{it.changeDetail || "-"}</div>
-                {it.changeLog.length > 0 && (
-                  <details className="mt-2 text-xs">
-                    <summary className="cursor-pointer text-primary">History ({it.changeLog.length})</summary>
-                    <ul className="mt-1 space-y-1">
-                      {it.changeLog.map((l) => (
-                        <li key={l.id} className="border-l-2 border-primary pl-2">
-                          <div className="font-medium">{new Date(l.date).toLocaleString()}</div>
-                          <div>Requested: {l.requestedBy}</div>
-                          <div>By: {l.changeMadeBy}</div>
-                          <div className="whitespace-pre-wrap">{l.description}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </Td>
-              <Td>
-                <div className="flex flex-col gap-1">
-                  <ItemDialog
-                    mode="modify"
-                    initial={it}
-                    triggerButton={
-                      <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs">
-                        <Pencil className="h-3 w-3" /> Modify
-                      </Button>
-                    }
-                    onSubmit={(draft, reason) => {
-                      const cb = onModify(it);
-                      if (cb) cb(draft, reason);
-                    }}
-                  />
-                  <DeleteDialog item={it} onConfirm={(reason) => onDelete(it, reason)} />
-                </div>
-              </Td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="rounded-xl border border-border bg-card p-3 flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <Label className="text-xs flex items-center gap-1 mb-1"><Search className="h-3 w-3" /> Search</Label>
+          <Input
+            placeholder="Search any field…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="w-[150px]">
+          <Label className="text-xs flex items-center gap-1 mb-1"><Filter className="h-3 w-3" /> Status</Label>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="live">Live</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-[160px]">
+          <Label className="text-xs mb-1 block">Product Type</Label>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {productTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-[160px]">
+          <Label className="text-xs mb-1 block">Channel</Label>
+          <Select value={channelFilter} onValueChange={setChannelFilter}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {channels.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} of {items.length} items
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
+          No catalog items match the filters.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+          <table className="w-full text-sm border-collapse">
+            <thead className="bg-muted/60 text-left sticky top-0">
+              <tr>
+                <Th>SN</Th>
+                <Th>Status</Th>
+                <Th>Product Name</Th>
+                <Th>Type</Th>
+                <Th>Product ID</Th>
+                <Th>Code</Th>
+                <Th className="text-right">Price</Th>
+                <Th>Resources</Th>
+                <Th>Validity</Th>
+                <Th>Live Date</Th>
+                <Th>Channel</Th>
+                <Th>Close Date</Th>
+                <Th>Changes Date</Th>
+                <Th>Changes Made</Th>
+                <Th>Change By</Th>
+                <Th>Change Detail</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((it) => {
+                const isClosed = (it.status || "live") === "closed";
+                return (
+                  <tr
+                    key={it.id}
+                    className={`border-t border-border align-top transition-colors ${
+                      isClosed
+                        ? "bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                        : "bg-emerald-500/5 hover:bg-emerald-500/10"
+                    }`}
+                  >
+                    <Td>
+                      <span className="font-semibold">{it.sn}</span>
+                    </Td>
+                    <Td>
+                      {isClosed ? (
+                        <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30">
+                          <Lock className="h-3 w-3 mr-1" /> Closed
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
+                          ● Live
+                        </Badge>
+                      )}
+                    </Td>
+                    <Td><span className="font-medium text-foreground">{it.productName}</span></Td>
+                    <Td>
+                      <Badge variant="outline" className="font-normal">{it.productType}</Badge>
+                    </Td>
+                    <Td className="font-mono text-[11px]">{it.productId}</Td>
+                    <Td className="font-mono text-[11px]">{it.productCode}</Td>
+                    <Td className="text-right font-semibold tabular-nums">
+                      {it.productPrice}
+                    </Td>
+                    <Td>
+                      <table className="text-[11px] border border-border rounded overflow-hidden">
+                        <tbody>
+                          <tr className="bg-muted/40">
+                            <td className="border border-border px-1.5 py-0.5 font-medium">Sub a/c id</td>
+                            {it.resources.map((r, i) => (
+                              <td key={i} className="border border-border px-1.5 py-0.5">{r.subAccountId}</td>
+                            ))}
+                          </tr>
+                          <tr>
+                            <td className="border border-border px-1.5 py-0.5 font-medium">Name</td>
+                            {it.resources.map((r, i) => (
+                              <td key={i} className="border border-border px-1.5 py-0.5">{r.subAccountName}</td>
+                            ))}
+                          </tr>
+                          <tr>
+                            <td className="border border-border px-1.5 py-0.5 font-medium">Resource</td>
+                            {it.resources.map((r, i) => (
+                              <td key={i} className="border border-border px-1.5 py-0.5">{r.resource}</td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Td>
+                    <Td>{it.productValidity}</Td>
+                    <Td className="whitespace-nowrap">{it.liveDate}</Td>
+                    <Td><Badge variant="secondary" className="font-normal">{it.channelOpenTo}</Badge></Td>
+                    <Td className="whitespace-nowrap">{it.closeDate || "—"}</Td>
+                    <Td className="whitespace-nowrap">{it.changesDate || "—"}</Td>
+                    <Td>{it.changesMade || "—"}</Td>
+                    <Td>{it.changeMadeBy || "—"}</Td>
+                    <Td>
+                      <div className="whitespace-pre-wrap text-[11px] max-w-[260px]">{it.changeDetail || "—"}</div>
+                      {it.changeLog.length > 0 && (
+                        <details className="mt-2 text-[11px]">
+                          <summary className="cursor-pointer text-primary inline-flex items-center gap-1">
+                            <History className="h-3 w-3" /> History ({it.changeLog.length})
+                          </summary>
+                          <ul className="mt-1 space-y-1 max-w-[260px]">
+                            {it.changeLog.map((l) => (
+                              <li key={l.id} className="border-l-2 border-primary pl-2">
+                                <div className="font-medium">{new Date(l.date).toLocaleString()}</div>
+                                <div>Requested: {l.requestedBy}</div>
+                                <div>By: {l.changeMadeBy}</div>
+                                <div className="whitespace-pre-wrap">{l.description}</div>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </Td>
+                    <Td>
+                      <div className="flex flex-col gap-1 min-w-[110px]">
+                        {!isClosed && (
+                          <ModifyDialog
+                            item={it}
+                            onSubmit={(draft, reason) => onModify(it, draft, reason)}
+                          />
+                        )}
+                        {!isClosed && (
+                          <CloseDialog item={it} onConfirm={(reason) => onClose(it, reason)} />
+                        )}
+                        <DeleteDialog item={it} onConfirm={(reason) => onDelete(it, reason)} />
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
 
-const Th: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <th className="px-2 py-2 text-xs font-semibold text-foreground border-b border-border whitespace-nowrap">{children}</th>
+const Th: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <th className={`px-2 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-foreground border-b border-border whitespace-nowrap ${className || ""}`}>{children}</th>
 );
-const Td: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <td className="px-2 py-2 text-xs text-foreground">{children}</td>
+const Td: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <td className={`px-2 py-2 text-xs ${className || ""}`}>{children}</td>
 );
 
-// ----- Item Dialog (Add/Modify request) -----
-const ItemDialog: React.FC<{
-  mode: "add" | "modify";
-  initial?: CatalogItem;
-  triggerButton: React.ReactNode;
-  onSubmit: (draft: CatalogItem, reason: string) => void;
-}> = ({ mode, initial, triggerButton, onSubmit }) => {
+// ----- Add Dialog (full form, no change/close fields) -----
+const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => void }> = ({ onSubmit }) => {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<CatalogItem>(() => initial || emptyItem());
+  const [draft, setDraft] = useState<CatalogItem>(() => emptyItem());
   const [reason, setReason] = useState("");
 
   const update = (patch: Partial<CatalogItem>) => setDraft((d) => ({ ...d, ...patch }));
   const updateResource = (idx: number, patch: Partial<CatalogResource>) =>
-    setDraft((d) => ({
-      ...d,
-      resources: d.resources.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
-    }));
+    setDraft((d) => ({ ...d, resources: d.resources.map((r, i) => (i === idx ? { ...r, ...patch } : r)) }));
   const addResource = () =>
     setDraft((d) => ({ ...d, resources: [...d.resources, { subAccountId: "", subAccountName: "", resource: "" }] }));
   const removeResource = (idx: number) =>
     setDraft((d) => ({ ...d, resources: d.resources.filter((_, i) => i !== idx) }));
 
   const handleSubmit = () => {
-    if (!draft.productName.trim()) {
-      toast.error("Product name is required");
-      return;
-    }
-    if (!reason.trim()) {
-      toast.error("Reason is required for approval");
-      return;
-    }
+    if (!draft.productName.trim()) return toast.error("Product name is required");
+    if (!reason.trim()) return toast.error("Reason is required for approval");
     onSubmit(draft, reason);
     setOpen(false);
     setReason("");
-    if (mode === "add") setDraft(emptyItem());
+    setDraft(emptyItem());
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{triggerButton}</DialogTrigger>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1.5">
+          <Plus className="h-4 w-4" /> Request Add
+        </Button>
+      </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{mode === "add" ? "Request New Catalog Item" : "Request Modification"}</DialogTitle>
-          <DialogDescription>Submit for manager approval.</DialogDescription>
+          <DialogTitle>Request New Catalog Item</DialogTitle>
+          <DialogDescription>Fill in the product details. Submitted for manager approval.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
-          <Field label="Product Type"><Input value={draft.productType} onChange={(e) => update({ productType: e.target.value })} placeholder="Onetime / Renewal / ..." /></Field>
+          <Field label="Product Type">
+            <Select value={draft.productType} onValueChange={(v) => update({ productType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Onetime">Onetime</SelectItem>
+                <SelectItem value="Renewal">Renewal</SelectItem>
+                <SelectItem value="Saapati">Saapati</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
           <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
           <Field label="Product Price"><Input type="number" value={draft.productPrice} onChange={(e) => update({ productPrice: Number(e.target.value) })} /></Field>
           <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
           <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
-          <Field label="Channel Open to"><Input value={draft.channelOpenTo} onChange={(e) => update({ channelOpenTo: e.target.value })} placeholder="All / USSD / App" /></Field>
-          <Field label="Close Date"><Input type="date" value={draft.closeDate || ""} onChange={(e) => update({ closeDate: e.target.value })} /></Field>
-          <Field label="Changes Date"><Input type="date" value={draft.changesDate || ""} onChange={(e) => update({ changesDate: e.target.value })} /></Field>
-          <Field label="Changes Made" className="sm:col-span-2"><Input value={draft.changesMade || ""} onChange={(e) => update({ changesMade: e.target.value })} /></Field>
-          <Field label="Change Made By"><Input value={draft.changeMadeBy || ""} onChange={(e) => update({ changeMadeBy: e.target.value })} /></Field>
-          <Field label="Change Detail" className="sm:col-span-2"><Textarea value={draft.changeDetail || ""} onChange={(e) => update({ changeDetail: e.target.value })} rows={3} /></Field>
+          <Field label="Channel Open to">
+            <Select value={draft.channelOpenTo} onValueChange={(v) => update({ channelOpenTo: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All</SelectItem>
+                <SelectItem value="USSD">USSD</SelectItem>
+                <SelectItem value="App">App</SelectItem>
+                <SelectItem value="Web">Web</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
 
         <div className="space-y-2">
@@ -378,9 +526,70 @@ const ItemDialog: React.FC<{
         </div>
 
         <Field label="Reason / Description for approval (required)">
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this change is needed..." rows={3} />
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this product needs to be added..." rows={3} />
         </Field>
 
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmit}>Submit for Approval</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ----- Modify Dialog (only change-related fields editable) -----
+const ModifyDialog: React.FC<{
+  item: CatalogItem;
+  onSubmit: (draft: CatalogItem, reason: string) => void;
+}> = ({ item, onSubmit }) => {
+  const [open, setOpen] = useState(false);
+  const [changesMade, setChangesMade] = useState("");
+  const [reason, setReason] = useState("");
+
+  const handleSubmit = () => {
+    if (!changesMade.trim()) return toast.error("Please describe what change is being made.");
+    if (!reason.trim()) return toast.error("Reason is required for approval");
+    // Build a draft that preserves existing fields, only updates changesMade.
+    const draft: CatalogItem = {
+      ...item,
+      changesMade,
+    };
+    onSubmit(draft, reason);
+    setOpen(false);
+    setChangesMade("");
+    setReason("");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs">
+          <Pencil className="h-3 w-3" /> Modify
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Request Modification</DialogTitle>
+          <DialogDescription>
+            Modifying <span className="font-semibold">{item.productName}</span>. Date and reviewer are filled in automatically when approved.
+          </DialogDescription>
+        </DialogHeader>
+        <Field label="Changes Made (what is being changed)">
+          <Input
+            value={changesMade}
+            onChange={(e) => setChangesMade(e.target.value)}
+            placeholder="e.g. Changed voice from 50 to 100"
+          />
+        </Field>
+        <Field label="Reason / Description for approval (required)">
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this change is needed..."
+            rows={3}
+          />
+        </Field>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={handleSubmit}>Submit for Approval</Button>
@@ -397,6 +606,48 @@ const Field: React.FC<{ label: string; children: React.ReactNode; className?: st
   </div>
 );
 
+// ----- Close Dialog -----
+const CloseDialog: React.FC<{ item: CatalogItem; onConfirm: (reason: string) => void }> = ({ item, onConfirm }) => {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs">
+          <Lock className="h-3 w-3" /> Close
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Request Close</DialogTitle>
+          <DialogDescription>
+            Closing <span className="font-semibold">{item.productName}</span> marks it as closed but keeps it visible. Needs manager approval.
+          </DialogDescription>
+        </DialogHeader>
+        <Textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Description / reason for closing (required)..."
+          rows={3}
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              if (!reason.trim()) return toast.error("Reason is required");
+              onConfirm(reason);
+              setOpen(false);
+              setReason("");
+            }}
+          >
+            Submit Close Request
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // ----- Delete Dialog -----
 const DeleteDialog: React.FC<{ item: CatalogItem; onConfirm: (reason: string) => void }> = ({ item, onConfirm }) => {
   const [open, setOpen] = useState(false);
@@ -404,14 +655,16 @@ const DeleteDialog: React.FC<{ item: CatalogItem; onConfirm: (reason: string) =>
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs text-destructive">
+        <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs text-destructive hover:text-destructive">
           <Trash2 className="h-3 w-3" /> Delete
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Request Deletion</DialogTitle>
-          <DialogDescription>Deleting "{item.productName}" needs manager approval.</DialogDescription>
+          <DialogDescription>
+            Deleting <span className="font-semibold">{item.productName}</span> permanently removes it. Needs manager approval.
+          </DialogDescription>
         </DialogHeader>
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for deletion (required)..." rows={3} />
         <DialogFooter>
@@ -419,10 +672,7 @@ const DeleteDialog: React.FC<{ item: CatalogItem; onConfirm: (reason: string) =>
           <Button
             variant="destructive"
             onClick={() => {
-              if (!reason.trim()) {
-                toast.error("Reason is required");
-                return;
-              }
+              if (!reason.trim()) return toast.error("Reason is required");
               onConfirm(reason);
               setOpen(false);
               setReason("");
@@ -447,20 +697,24 @@ const ApprovalsList: React.FC<{
   if (requests.length === 0) {
     return <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">No catalog requests yet.</div>;
   }
+  const typeColor: Record<string, string> = {
+    add: "bg-emerald-100 text-emerald-700",
+    modify: "bg-amber-100 text-amber-700",
+    close: "bg-slate-200 text-slate-700",
+    delete: "bg-red-100 text-red-700",
+  };
   return (
     <div className="space-y-3">
       {requests.map((r) => {
         const target = r.itemId ? items.find((i) => i.id === r.itemId) : undefined;
         return (
-          <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+          <div key={r.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                    r.type === "add" ? "bg-emerald-100 text-emerald-700" :
-                    r.type === "modify" ? "bg-amber-100 text-amber-700" :
-                    "bg-red-100 text-red-700"
-                  }`}>{r.type.toUpperCase()}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${typeColor[r.type] || "bg-muted"}`}>
+                    {r.type.toUpperCase()}
+                  </span>
                   <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                     r.status === "pending" ? "bg-muted text-foreground" :
                     r.status === "approved" ? "bg-emerald-100 text-emerald-700" :
@@ -469,6 +723,9 @@ const ApprovalsList: React.FC<{
                 </div>
                 <p className="text-sm font-semibold">
                   {r.draft?.productName || target?.productName || "(Item)"}
+                  {r.type === "modify" && r.draft?.changesMade && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">— {r.draft.changesMade}</span>
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   by {r.requestedBy} • {new Date(r.requestedAt).toLocaleString()}
