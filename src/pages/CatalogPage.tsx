@@ -551,27 +551,39 @@ const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => vo
   );
 };
 
-// ----- Modify Dialog (only change-related fields editable) -----
+// ----- Modify Dialog (full edit of all fields) -----
 const ModifyDialog: React.FC<{
   item: CatalogItem;
   onSubmit: (draft: CatalogItem, reason: string) => void;
 }> = ({ item, onSubmit }) => {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<CatalogItem>(item);
   const [changesMade, setChangesMade] = useState("");
   const [reason, setReason] = useState("");
 
+  // Reset form whenever the dialog is opened with a fresh copy of the item
+  React.useEffect(() => {
+    if (open) {
+      setDraft({ ...item, resources: item.resources.map((r) => ({ ...r })) });
+      setChangesMade("");
+      setReason("");
+    }
+  }, [open, item]);
+
+  const update = (patch: Partial<CatalogItem>) => setDraft((d) => ({ ...d, ...patch }));
+  const updateResource = (idx: number, patch: Partial<CatalogResource>) =>
+    setDraft((d) => ({ ...d, resources: d.resources.map((r, i) => (i === idx ? { ...r, ...patch } : r)) }));
+  const addResource = () =>
+    setDraft((d) => ({ ...d, resources: [...d.resources, { subAccountId: "", subAccountName: "", resource: "" }] }));
+  const removeResource = (idx: number) =>
+    setDraft((d) => ({ ...d, resources: d.resources.filter((_, i) => i !== idx) }));
+
   const handleSubmit = () => {
-    if (!changesMade.trim()) return toast.error("Please describe what change is being made.");
+    if (!changesMade.trim())
+      return toast.error("Please summarise what is being changed (Changes Made).");
     if (!reason.trim()) return toast.error("Reason is required for approval");
-    // Build a draft that preserves existing fields, only updates changesMade.
-    const draft: CatalogItem = {
-      ...item,
-      changesMade,
-    };
-    onSubmit(draft, reason);
+    onSubmit({ ...draft, changesMade }, reason);
     setOpen(false);
-    setChangesMade("");
-    setReason("");
   };
 
   return (
@@ -581,18 +593,67 @@ const ModifyDialog: React.FC<{
           <Pencil className="h-3 w-3" /> Modify
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Request Modification</DialogTitle>
           <DialogDescription>
-            Modifying <span className="font-semibold">{item.productName}</span>. Date and reviewer are filled in automatically when approved.
+            Editing <span className="font-semibold">{item.productName}</span>. Update any field.
+            Change date and reviewer are filled in automatically when approved.
           </DialogDescription>
         </DialogHeader>
-        <Field label="Changes Made (what is being changed)">
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
+          <Field label="Product Type">
+            <Select value={draft.productType} onValueChange={(v) => update({ productType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Onetime">Onetime</SelectItem>
+                <SelectItem value="Renewal">Renewal</SelectItem>
+                <SelectItem value="Saapati">Saapati</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
+          <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
+          <Field label="Product Price"><Input type="number" value={draft.productPrice} onChange={(e) => update({ productPrice: Number(e.target.value) })} /></Field>
+          <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
+          <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
+          <Field label="Channel Open to">
+            <Select value={draft.channelOpenTo} onValueChange={(v) => update({ channelOpenTo: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All</SelectItem>
+                <SelectItem value="USSD">USSD</SelectItem>
+                <SelectItem value="App">App</SelectItem>
+                <SelectItem value="Web">Web</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Product Resources</Label>
+            <Button size="sm" variant="outline" onClick={addResource} className="gap-1 h-7 px-2"><Plus className="h-3 w-3" /> Add</Button>
+          </div>
+          <div className="space-y-2">
+            {draft.resources.map((r, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-3"><Label className="text-xs">Sub account id</Label><Input value={r.subAccountId} onChange={(e) => updateResource(i, { subAccountId: e.target.value })} /></div>
+                <div className="col-span-4"><Label className="text-xs">Subaccount name</Label><Input value={r.subAccountName} onChange={(e) => updateResource(i, { subAccountName: e.target.value })} /></div>
+                <div className="col-span-4"><Label className="text-xs">Resource</Label><Input value={r.resource} onChange={(e) => updateResource(i, { resource: e.target.value })} /></div>
+                <div className="col-span-1"><Button size="sm" variant="ghost" onClick={() => removeResource(i)}><Trash2 className="h-3 w-3" /></Button></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Field label="Changes Made — short summary (required)">
           <Input
             value={changesMade}
             onChange={(e) => setChangesMade(e.target.value)}
-            placeholder="e.g. Changed voice from 50 to 100"
+            placeholder="e.g. Changed voice from 50 to 100, updated price"
           />
         </Field>
         <Field label="Reason / Description for approval (required)">
@@ -603,6 +664,7 @@ const ModifyDialog: React.FC<{
             rows={3}
           />
         </Field>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={handleSubmit}>Submit for Approval</Button>
