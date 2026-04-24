@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { CatalogItem, CatalogRequest, CatalogRequestType } from "@/lib/catalogTypes";
 import { generateId } from "@/lib/utils";
+import { notifyApi } from "@/lib/taskApi";
 
 const CATALOG_KEY = "cal_catalog";
 const CATALOG_REQ_KEY = "cal_catalog_requests";
