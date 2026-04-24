@@ -118,20 +118,31 @@ const CatalogPage: React.FC = () => {
               </TabsTrigger>
             </TabsList>
 
-            <AddDialog
-              onSubmit={(draft, reason) => {
-                if (!user) return;
-                const result = submitRequest({
-                  type: "add",
-                  draft,
-                  reason,
-                  requestedBy: user.name,
-                  requestedById: user.id,
-                });
-                if (result.success) toast.success(result.message);
-                else toast.error(result.message);
-              }}
-            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => exportCatalogToExcel(items)}
+                disabled={items.length === 0}
+              >
+                <Download className="h-4 w-4" /> Export Excel
+              </Button>
+              <AddDialog
+                onSubmit={(draft, reason) => {
+                  if (!user) return;
+                  const result = submitRequest({
+                    type: "add",
+                    draft,
+                    reason,
+                    requestedBy: user.name,
+                    requestedById: user.id,
+                  });
+                  if (result.success) toast.success(result.message);
+                  else toast.error(result.message);
+                }}
+              />
+            </div>
           </div>
 
           <TabsContent value="catalog" className="mt-6">
