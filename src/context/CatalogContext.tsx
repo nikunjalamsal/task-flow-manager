@@ -64,6 +64,7 @@ const seedItems = (): CatalogItem[] => {
       changeDetail: "Requested: nlamsal\nChange made by: BSS_team\nDescription: Approval of XXXX",
       changeLog: [],
       createdAt: new Date().toISOString(),
+      status: "live",
     },
   ];
   localStorage.setItem(CATALOG_KEY, JSON.stringify(seed));
@@ -83,7 +84,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const submitRequest: CatalogContextType["submitRequest"] = useCallback((req) => {
     if (!req.reason.trim()) return { success: false, message: "Reason is required." };
-    if ((req.type === "modify" || req.type === "delete") && !req.itemId) {
+    if ((req.type === "modify" || req.type === "delete" || req.type === "close") && !req.itemId) {
       return { success: false, message: "Target item is required." };
     }
     if ((req.type === "add" || req.type === "modify") && !req.draft) {
@@ -111,6 +112,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!r) return prevReqs;
 
         setItems((prevItems) => {
+          const today = new Date().toISOString().slice(0, 10);
           if (r.type === "add" && r.draft) {
             const nextSn = (prevItems.reduce((m, i) => Math.max(m, i.sn), 0) || 0) + 1;
             const log = [
@@ -124,7 +126,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 summary: "Added",
               },
             ];
-            return [...prevItems, { ...r.draft, id: generateId(), sn: nextSn, changeLog: log }];
+            return [...prevItems, { ...r.draft, id: generateId(), sn: nextSn, status: "live", changeLog: log }];
           }
           if (r.type === "modify" && r.draft && r.itemId) {
             return prevItems.map((it) =>
@@ -133,6 +135,13 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     ...r.draft!,
                     id: it.id,
                     sn: it.sn,
+                    status: it.status || "live",
+                    closeDate: it.closeDate,
+                    closeReason: it.closeReason,
+                    changesDate: today,
+                    changesMade: r.draft!.changesMade || r.reason,
+                    changeMadeBy: reviewerName,
+                    changeDetail: `Requested: ${r.requestedBy}\nChange made by: ${reviewerName}\nDescription: ${comment || r.reason}`,
                     changeLog: [
                       ...it.changeLog,
                       {
@@ -141,7 +150,34 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                         requestedBy: r.requestedBy,
                         changeMadeBy: reviewerName,
                         description: comment || "Modified.",
-                        summary: r.reason,
+                        summary: r.draft!.changesMade || r.reason,
+                      },
+                    ],
+                  }
+                : it
+            );
+          }
+          if (r.type === "close" && r.itemId) {
+            return prevItems.map((it) =>
+              it.id === r.itemId
+                ? {
+                    ...it,
+                    status: "closed",
+                    closeDate: today,
+                    closeReason: r.reason,
+                    changesDate: today,
+                    changesMade: "Closed",
+                    changeMadeBy: reviewerName,
+                    changeDetail: `Requested: ${r.requestedBy}\nClosed by: ${reviewerName}\nDescription: ${comment || r.reason}`,
+                    changeLog: [
+                      ...it.changeLog,
+                      {
+                        id: generateId(),
+                        date: new Date().toISOString(),
+                        requestedBy: r.requestedBy,
+                        changeMadeBy: reviewerName,
+                        description: comment || r.reason,
+                        summary: "Closed",
                       },
                     ],
                   }

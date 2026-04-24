@@ -35,9 +35,12 @@ export interface CatalogItem {
   changeDetail?: string;
   changeLog: CatalogChangeLog[];
   createdAt: string;
+  status?: CatalogStatus;
+  closeReason?: string;
 }
 
-export type CatalogRequestType = "add" | "modify" | "delete";
+export type CatalogStatus = "live" | "closed";
+export type CatalogRequestType = "add" | "modify" | "delete" | "close";
 export type CatalogRequestStatus = "pending" | "approved" | "rejected";
 
 export interface CatalogRequest {
