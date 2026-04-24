@@ -64,6 +64,7 @@ const seedItems = (): CatalogItem[] => {
       changeDetail: "Requested: nlamsal\nChange made by: BSS_team\nDescription: Approval of XXXX",
       changeLog: [],
       createdAt: new Date().toISOString(),
+      status: "live",
     },
   ];
   localStorage.setItem(CATALOG_KEY, JSON.stringify(seed));
