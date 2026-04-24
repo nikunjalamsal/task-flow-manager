@@ -120,12 +120,26 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const approveRequest = useCallback(
     (id: string, reviewerName: string, comment: string) => {
+      let notifyName = "(item)";
+      let notifyType: CatalogRequestType = "modify";
+      let notifyRequestedBy = "";
+      let notifyChangesMade: string | undefined;
+      let notifyReason = "";
+
       setRequests((prevReqs) => {
         const r = prevReqs.find((x) => x.id === id);
         if (!r) return prevReqs;
 
+        notifyType = r.type;
+        notifyRequestedBy = r.requestedBy;
+        notifyChangesMade = r.draft?.changesMade;
+        notifyReason = r.reason;
+
         setItems((prevItems) => {
           const today = new Date().toISOString().slice(0, 10);
+          const existing = r.itemId ? prevItems.find((i) => i.id === r.itemId) : undefined;
+          notifyName = r.draft?.productName || existing?.productName || "(item)";
+
           if (r.type === "add" && r.draft) {
             const nextSn = (prevItems.reduce((m, i) => Math.max(m, i.sn), 0) || 0) + 1;
             const log = [
@@ -209,19 +223,53 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
             : x
         );
       });
+
+      notifyApi.notifyCatalogEvent({
+        phase: "approved",
+        requestType: notifyType,
+        productName: notifyName,
+        requestedBy: notifyRequestedBy,
+        reviewedBy: reviewerName,
+        reason: notifyReason,
+        comment,
+        changesMade: notifyChangesMade,
+      });
     },
     []
   );
 
   const rejectRequest = useCallback((id: string, reviewerName: string, comment: string) => {
-    setRequests((prev) =>
-      prev.map((x) =>
+    let notifyName = "(item)";
+    let notifyType: CatalogRequestType = "modify";
+    let notifyRequestedBy = "";
+    let notifyReason = "";
+
+    setRequests((prev) => {
+      const r = prev.find((x) => x.id === id);
+      if (r) {
+        notifyType = r.type;
+        notifyRequestedBy = r.requestedBy;
+        notifyReason = r.reason;
+        notifyName = r.draft?.productName || "(item)";
+      }
+      return prev.map((x) =>
         x.id === id
           ? { ...x, status: "rejected", reviewedBy: reviewerName, reviewedAt: new Date().toISOString(), reviewComment: comment }
           : x
-      )
-    );
+      );
+    });
+
+    notifyApi.notifyCatalogEvent({
+      phase: "rejected",
+      requestType: notifyType,
+      productName: notifyName,
+      requestedBy: notifyRequestedBy,
+      reviewedBy: reviewerName,
+      reason: notifyReason,
+      comment,
+    });
   }, []);
+
 
   return (
     <CatalogContext.Provider value={{ items, requests, submitRequest, approveRequest, rejectRequest }}>
