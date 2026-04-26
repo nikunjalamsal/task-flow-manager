@@ -69,6 +69,8 @@ function readJsonFile(filePath, fallbackValue) {
 }
 
 ensureJsonFile(TASKS_FILE, []);
+ensureJsonFile(CATALOG_FILE, []);
+ensureJsonFile(CATALOG_REQ_FILE, []);
 ensureJsonFile(ROLE_MAPPING_FILE, DEFAULT_ROLE_MAPPING);
 
 function getRoleMapping() {
