@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { CatalogItem, CatalogRequest, CatalogRequestType } from "@/lib/catalogTypes";
 import { generateId } from "@/lib/utils";
-import { notifyApi } from "@/lib/taskApi";
+import { notifyApi, catalogApi } from "@/lib/taskApi";
 
 const CATALOG_KEY = "cal_catalog";
 const CATALOG_REQ_KEY = "cal_catalog_requests";
@@ -9,6 +9,7 @@ const CATALOG_REQ_KEY = "cal_catalog_requests";
 interface CatalogContextType {
   items: CatalogItem[];
   requests: CatalogRequest[];
+  loaded: boolean;
   submitRequest: (req: {
     type: CatalogRequestType;
     itemId?: string;
@@ -23,65 +24,111 @@ interface CatalogContextType {
 
 const CatalogContext = createContext<CatalogContextType | null>(null);
 
-const loadItems = (): CatalogItem[] => {
-  try {
-    const raw = localStorage.getItem(CATALOG_KEY);
-    return raw ? JSON.parse(raw) : seedItems();
-  } catch {
-    return seedItems();
+const seedItems = (): CatalogItem[] => [
+  {
+    id: generateId(),
+    sn: 1,
+    productName: "A",
+    productType: "Onetime",
+    productId: "1111",
+    productCode: "S123",
+    productPrice: 100,
+    resources: [
+      { subAccountId: "124", subAccountName: "Data", resource: "104857600" },
+      { subAccountId: "234", subAccountName: "Voice", resource: "100" },
+      { subAccountId: "6433", subAccountName: "SMS", resource: "10" },
+      { subAccountId: "6323", subAccountName: "Unlimited", resource: "2067846292" },
+    ],
+    productValidity: "1 day",
+    liveDate: "2026-04-22",
+    channelOpenTo: "All",
+    productOwner: "BSS_Team",
+    changesDate: "",
+    changesMade: "",
+    changeMadeBy: "",
+    changeDetail: "",
+    changeLog: [],
+    createdAt: new Date().toISOString(),
+    status: "live",
+  },
+];
+
+// Build a diff string between previous and new item: "Field: A → B"
+const buildDiff = (prev: CatalogItem, next: CatalogItem): string => {
+  const lines: string[] = [];
+  const fields: { key: keyof CatalogItem; label: string }[] = [
+    { key: "productName", label: "Name" },
+    { key: "productType", label: "Type" },
+    { key: "productId", label: "Product ID" },
+    { key: "productCode", label: "Code" },
+    { key: "productPrice", label: "Price" },
+    { key: "productValidity", label: "Validity" },
+    { key: "liveDate", label: "Live Date" },
+    { key: "channelOpenTo", label: "Channel" },
+    { key: "productOwner", label: "Product Owner" },
+  ];
+  for (const f of fields) {
+    const a = (prev as any)[f.key] ?? "";
+    const b = (next as any)[f.key] ?? "";
+    if (String(a) !== String(b)) lines.push(`${f.label}: ${a || "(empty)"} → ${b || "(empty)"}`);
   }
-};
-const loadReqs = (): CatalogRequest[] => {
-  try {
-    const raw = localStorage.getItem(CATALOG_REQ_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
+  // Resources diff
+  const prevR = JSON.stringify(prev.resources);
+  const nextR = JSON.stringify(next.resources);
+  if (prevR !== nextR) {
+    const fmt = (rs: typeof prev.resources) =>
+      rs.map((r) => `${r.subAccountName || r.subAccountId}=${r.resource}`).join(", ");
+    lines.push(`Resources: ${fmt(prev.resources)} → ${fmt(next.resources)}`);
   }
+  return lines.join("\n");
 };
 
-const seedItems = (): CatalogItem[] => {
-  const seed: CatalogItem[] = [
-    {
-      id: generateId(),
-      sn: 1,
-      productName: "A",
-      productType: "Onetime",
-      productId: "1111",
-      productCode: "S123",
-      productPrice: 100,
-      resources: [
-        { subAccountId: "124", subAccountName: "Data", resource: "104857600" },
-        { subAccountId: "234", subAccountName: "Voice", resource: "100" },
-        { subAccountId: "6433", subAccountName: "SMS", resource: "10" },
-        { subAccountId: "6323", subAccountName: "Unlimited", resource: "2067846292" },
-      ],
-      productValidity: "1 day",
-      liveDate: "2026-04-22",
-      channelOpenTo: "All",
-      changesDate: "2026-04-23",
-      changesMade: "Changed voice from 50 to 100",
-      changeMadeBy: "BSS_Team",
-      changeDetail: "Requested: nlamsal\nChange made by: BSS_team\nDescription: Approval of XXXX",
-      changeLog: [],
-      createdAt: new Date().toISOString(),
-      status: "live",
-    },
-  ];
-  localStorage.setItem(CATALOG_KEY, JSON.stringify(seed));
-  return seed;
+const fmtDate = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleString();
+};
+
+// Append a formatted entry to change detail audit trail
+const appendDetail = (existing: string | undefined, entry: string): string => {
+  const prev = (existing || "").trim();
+  return prev ? `${prev}\n${entry}` : entry;
 };
 
 export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<CatalogItem[]>(() => loadItems());
-  const [requests, setRequests] = useState<CatalogRequest[]>(() => loadReqs());
+  const [items, setItems] = useState<CatalogItem[]>([]);
+  const [requests, setRequests] = useState<CatalogRequest[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
+  // Initial load from server (with localStorage fallback)
   useEffect(() => {
+    (async () => {
+      const [serverItems, serverReqs] = await Promise.all([
+        catalogApi.loadItems(),
+        catalogApi.loadRequests(),
+      ]);
+      if (serverItems.length === 0) {
+        const seed = seedItems();
+        setItems(seed);
+        catalogApi.saveItems(seed);
+      } else {
+        setItems(serverItems);
+      }
+      setRequests(serverReqs);
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Persist on change (after initial load)
+  useEffect(() => {
+    if (!loaded) return;
     localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
-  }, [items]);
+    catalogApi.saveItems(items);
+  }, [items, loaded]);
   useEffect(() => {
+    if (!loaded) return;
     localStorage.setItem(CATALOG_REQ_KEY, JSON.stringify(requests));
-  }, [requests]);
+    catalogApi.saveRequests(requests);
+  }, [requests, loaded]);
 
   const submitRequest: CatalogContextType["submitRequest"] = useCallback((req) => {
     if (!req.reason.trim()) return { success: false, message: "Reason is required." };
@@ -103,10 +150,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       draft: req.draft,
     };
     setRequests((prev) => [newReq, ...prev]);
-    // Notify managers for approval + bss_team for awareness
-    const productName =
-      req.draft?.productName ||
-      "(item)";
+    const productName = req.draft?.productName || "(item)";
     notifyApi.notifyCatalogEvent({
       phase: "submitted",
       requestType: req.type,
@@ -132,85 +176,106 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         notifyType = r.type;
         notifyRequestedBy = r.requestedBy;
-        notifyChangesMade = r.draft?.changesMade;
         notifyReason = r.reason;
 
         setItems((prevItems) => {
           const today = new Date().toISOString().slice(0, 10);
+          const nowIso = new Date().toISOString();
           const existing = r.itemId ? prevItems.find((i) => i.id === r.itemId) : undefined;
           notifyName = r.draft?.productName || existing?.productName || "(item)";
 
           if (r.type === "add" && r.draft) {
             const nextSn = (prevItems.reduce((m, i) => Math.max(m, i.sn), 0) || 0) + 1;
+            const detailEntry = `${fmtDate(nowIso)} — ADDED: Requested by ${r.requestedBy}, Approved by ${reviewerName}${comment ? ` — ${comment}` : ""}`;
             const log = [
               ...r.draft.changeLog,
               {
                 id: generateId(),
-                date: new Date().toISOString(),
+                date: nowIso,
                 requestedBy: r.requestedBy,
                 changeMadeBy: reviewerName,
                 description: comment || "Item added.",
                 summary: "Added",
               },
             ];
-            return [...prevItems, { ...r.draft, id: generateId(), sn: nextSn, status: "live", changeLog: log }];
+            return [
+              ...prevItems,
+              {
+                ...r.draft,
+                id: generateId(),
+                sn: nextSn,
+                status: "live",
+                changeMadeBy: r.requestedBy,
+                changeDetail: detailEntry,
+                changeLog: log,
+              },
+            ];
           }
+
           if (r.type === "modify" && r.draft && r.itemId) {
-            return prevItems.map((it) =>
-              it.id === r.itemId
-                ? {
-                    ...r.draft!,
-                    id: it.id,
-                    sn: it.sn,
-                    status: it.status || "live",
-                    closeDate: it.closeDate,
-                    closeReason: it.closeReason,
-                    changesDate: today,
-                    changesMade: r.draft!.changesMade || r.reason,
+            return prevItems.map((it) => {
+              if (it.id !== r.itemId) return it;
+              const merged: CatalogItem = {
+                ...r.draft!,
+                id: it.id,
+                sn: it.sn,
+                status: it.status || "live",
+                closeDate: it.closeDate,
+                closeReason: it.closeReason,
+                createdAt: it.createdAt,
+              };
+              const diff = buildDiff(it, merged) || (r.draft!.changesMade || r.reason);
+              notifyChangesMade = diff;
+              const detailEntry = `${fmtDate(nowIso)} — MODIFIED: Requested by ${r.requestedBy}, Approved by ${reviewerName}\n${diff}${comment ? `\nNote: ${comment}` : ""}`;
+              return {
+                ...merged,
+                changesDate: today,
+                changesMade: diff,
+                changeMadeBy: r.requestedBy,
+                changeDetail: appendDetail(it.changeDetail, detailEntry),
+                changeLog: [
+                  ...it.changeLog,
+                  {
+                    id: generateId(),
+                    date: nowIso,
+                    requestedBy: r.requestedBy,
                     changeMadeBy: reviewerName,
-                    changeDetail: `Requested: ${r.requestedBy}\nChange made by: ${reviewerName}\nDescription: ${comment || r.reason}`,
-                    changeLog: [
-                      ...it.changeLog,
-                      {
-                        id: generateId(),
-                        date: new Date().toISOString(),
-                        requestedBy: r.requestedBy,
-                        changeMadeBy: reviewerName,
-                        description: comment || "Modified.",
-                        summary: r.draft!.changesMade || r.reason,
-                      },
-                    ],
-                  }
-                : it
-            );
+                    description: comment || r.reason,
+                    summary: diff,
+                  },
+                ],
+              };
+            });
           }
+
           if (r.type === "close" && r.itemId) {
-            return prevItems.map((it) =>
-              it.id === r.itemId
-                ? {
-                    ...it,
-                    status: "closed",
-                    closeDate: today,
-                    closeReason: r.reason,
-                    changesDate: today,
-                    changesMade: "Closed",
+            return prevItems.map((it) => {
+              if (it.id !== r.itemId) return it;
+              const detailEntry = `${fmtDate(nowIso)} — CLOSED: Requested by ${r.requestedBy}, Approved by ${reviewerName}\nReason: ${r.reason}${comment ? `\nNote: ${comment}` : ""}`;
+              return {
+                ...it,
+                status: "closed",
+                closeDate: today,
+                closeReason: r.reason,
+                changesDate: today,
+                changesMade: "Closed",
+                changeMadeBy: r.requestedBy,
+                changeDetail: appendDetail(it.changeDetail, detailEntry),
+                changeLog: [
+                  ...it.changeLog,
+                  {
+                    id: generateId(),
+                    date: nowIso,
+                    requestedBy: r.requestedBy,
                     changeMadeBy: reviewerName,
-                    changeDetail: `Requested: ${r.requestedBy}\nClosed by: ${reviewerName}\nDescription: ${comment || r.reason}`,
-                    changeLog: [
-                      ...it.changeLog,
-                      {
-                        id: generateId(),
-                        date: new Date().toISOString(),
-                        requestedBy: r.requestedBy,
-                        changeMadeBy: reviewerName,
-                        description: comment || r.reason,
-                        summary: "Closed",
-                      },
-                    ],
-                  }
-                : it
-            );
+                    description: comment || r.reason,
+                    summary: "Closed",
+                  },
+                ],
+              };
+            });
           }
+
           if (r.type === "delete" && r.itemId) {
             return prevItems.filter((it) => it.id !== r.itemId);
           }
@@ -270,9 +335,8 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
-
   return (
-    <CatalogContext.Provider value={{ items, requests, submitRequest, approveRequest, rejectRequest }}>
+    <CatalogContext.Provider value={{ items, requests, loaded, submitRequest, approveRequest, rejectRequest }}>
       {children}
     </CatalogContext.Provider>
   );
