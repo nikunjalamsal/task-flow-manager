@@ -333,6 +333,7 @@ const CatalogTable: React.FC<{
                 <Th>Validity</Th>
                 <Th>Live Date</Th>
                 <Th>Channel</Th>
+                <Th>Product Owner</Th>
                 <Th>Close Date</Th>
                 <Th>Changes Date</Th>
                 <Th>Changes Made</Th>
