@@ -616,6 +616,62 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.url === "/api/catalog" && req.method === "GET") {
+    try {
+      const data = fs.readFileSync(CATALOG_FILE, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(data);
+      return;
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("[]");
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog" && req.method === "PUT") {
+    try {
+      const body = await readBody(req);
+      JSON.parse(body);
+      fs.writeFileSync(CATALOG_FILE, body, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"success":true}');
+      return;
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Invalid JSON: ${error.message}` }));
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog-requests" && req.method === "GET") {
+    try {
+      const data = fs.readFileSync(CATALOG_REQ_FILE, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(data);
+      return;
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("[]");
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog-requests" && req.method === "PUT") {
+    try {
+      const body = await readBody(req);
+      JSON.parse(body);
+      fs.writeFileSync(CATALOG_REQ_FILE, body, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"success":true}');
+      return;
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Invalid JSON: ${error.message}` }));
+      return;
+    }
+  }
+
   serveStatic(req, res);
 });
 
