@@ -36,6 +36,56 @@ export const taskApi = {
   },
 };
 
+const CATALOG_KEY = "cal_catalog";
+const CATALOG_REQ_KEY = "cal_catalog_requests";
+
+export const catalogApi = {
+  async loadItems(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/catalog`);
+      if (!res.ok) throw new Error();
+      const items = await res.json();
+      localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
+      return items;
+    } catch {
+      const saved = localStorage.getItem(CATALOG_KEY);
+      return saved ? JSON.parse(saved) : [];
+    }
+  },
+  async saveItems(items: any[]): Promise<void> {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
+    try {
+      await fetch(`${API_BASE}/catalog`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(items),
+      });
+    } catch {}
+  },
+  async loadRequests(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/catalog-requests`);
+      if (!res.ok) throw new Error();
+      const reqs = await res.json();
+      localStorage.setItem(CATALOG_REQ_KEY, JSON.stringify(reqs));
+      return reqs;
+    } catch {
+      const saved = localStorage.getItem(CATALOG_REQ_KEY);
+      return saved ? JSON.parse(saved) : [];
+    }
+  },
+  async saveRequests(reqs: any[]): Promise<void> {
+    localStorage.setItem(CATALOG_REQ_KEY, JSON.stringify(reqs));
+    try {
+      await fetch(`${API_BASE}/catalog-requests`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqs),
+      });
+    } catch {}
+  },
+};
+
 export const notifyApi = {
   async notifyManagers(): Promise<void> {
     try {
