@@ -130,6 +130,8 @@ const CatalogPage: React.FC = () => {
                 <Download className="h-4 w-4" /> Export Excel
               </Button>
               <AddDialog
+                existingItems={items}
+                defaultOwner={user?.name || ""}
                 onSubmit={(draft, reason) => {
                   if (!user) return;
                   const result = submitRequest({
