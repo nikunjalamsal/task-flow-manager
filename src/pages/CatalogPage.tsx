@@ -45,7 +45,7 @@ import { CatalogItem, CatalogResource } from "@/lib/catalogTypes";
 import { exportCatalogToExcel } from "@/lib/exportCatalogExcel";
 import { toast } from "sonner";
 
-const emptyItem = (): CatalogItem => ({
+const emptyItem = (owner = ""): CatalogItem => ({
   id: "",
   sn: 0,
   productName: "",
@@ -57,6 +57,7 @@ const emptyItem = (): CatalogItem => ({
   productValidity: "",
   liveDate: "",
   channelOpenTo: "All",
+  productOwner: owner,
   closeDate: "",
   changesDate: "",
   changesMade: "",
