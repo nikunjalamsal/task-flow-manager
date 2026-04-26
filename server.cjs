@@ -6,6 +6,8 @@ const nodemailer = require("nodemailer");
 
 const PORT = Number(process.env.PORT || 3000);
 const TASKS_FILE = path.join(__dirname, "tasks.json");
+const CATALOG_FILE = path.join(__dirname, "catalog.json");
+const CATALOG_REQ_FILE = path.join(__dirname, "catalog-requests.json");
 const DIST_DIR = path.join(__dirname, "dist");
 const ROLE_MAPPING_FILE = path.join(__dirname, "role-mapping.json");
 
@@ -67,6 +69,8 @@ function readJsonFile(filePath, fallbackValue) {
 }
 
 ensureJsonFile(TASKS_FILE, []);
+ensureJsonFile(CATALOG_FILE, []);
+ensureJsonFile(CATALOG_REQ_FILE, []);
 ensureJsonFile(ROLE_MAPPING_FILE, DEFAULT_ROLE_MAPPING);
 
 function getRoleMapping() {
@@ -602,6 +606,62 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       JSON.parse(body);
       fs.writeFileSync(TASKS_FILE, body, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"success":true}');
+      return;
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Invalid JSON: ${error.message}` }));
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog" && req.method === "GET") {
+    try {
+      const data = fs.readFileSync(CATALOG_FILE, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(data);
+      return;
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("[]");
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog" && req.method === "PUT") {
+    try {
+      const body = await readBody(req);
+      JSON.parse(body);
+      fs.writeFileSync(CATALOG_FILE, body, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end('{"success":true}');
+      return;
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Invalid JSON: ${error.message}` }));
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog-requests" && req.method === "GET") {
+    try {
+      const data = fs.readFileSync(CATALOG_REQ_FILE, "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(data);
+      return;
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("[]");
+      return;
+    }
+  }
+
+  if (req.url === "/api/catalog-requests" && req.method === "PUT") {
+    try {
+      const body = await readBody(req);
+      JSON.parse(body);
+      fs.writeFileSync(CATALOG_REQ_FILE, body, "utf-8");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end('{"success":true}');
       return;

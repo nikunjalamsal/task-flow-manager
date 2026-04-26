@@ -16,6 +16,7 @@ export const exportCatalogToExcel = (items: CatalogItem[]) => {
     "Validity": it.productValidity,
     "Live Date": it.liveDate,
     "Channel Open To": it.channelOpenTo,
+    "Product Owner": it.productOwner || "",
     "Close Date": it.closeDate || "",
     "Close Reason": it.closeReason || "",
     "Changes Date": it.changesDate || "",

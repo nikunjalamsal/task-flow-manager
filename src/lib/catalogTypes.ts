@@ -28,6 +28,7 @@ export interface CatalogItem {
   productValidity: string;
   liveDate: string;
   channelOpenTo: ChannelOpenTo;
+  productOwner?: string;
   closeDate?: string;
   changesDate?: string;
   changesMade?: string;

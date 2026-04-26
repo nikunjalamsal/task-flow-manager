@@ -45,7 +45,7 @@ import { CatalogItem, CatalogResource } from "@/lib/catalogTypes";
 import { exportCatalogToExcel } from "@/lib/exportCatalogExcel";
 import { toast } from "sonner";
 
-const emptyItem = (): CatalogItem => ({
+const emptyItem = (owner = ""): CatalogItem => ({
   id: "",
   sn: 0,
   productName: "",
@@ -57,6 +57,7 @@ const emptyItem = (): CatalogItem => ({
   productValidity: "",
   liveDate: "",
   channelOpenTo: "All",
+  productOwner: owner,
   closeDate: "",
   changesDate: "",
   changesMade: "",
@@ -129,6 +130,8 @@ const CatalogPage: React.FC = () => {
                 <Download className="h-4 w-4" /> Export Excel
               </Button>
               <AddDialog
+                existingItems={items}
+                defaultOwner={user?.name || ""}
                 onSubmit={(draft, reason) => {
                   if (!user) return;
                   const result = submitRequest({
@@ -330,6 +333,7 @@ const CatalogTable: React.FC<{
                 <Th>Validity</Th>
                 <Th>Live Date</Th>
                 <Th>Channel</Th>
+                <Th>Product Owner</Th>
                 <Th>Close Date</Th>
                 <Th>Changes Date</Th>
                 <Th>Changes Made</Th>
@@ -400,6 +404,7 @@ const CatalogTable: React.FC<{
                     <Td>{it.productValidity}</Td>
                     <Td className="whitespace-nowrap">{it.liveDate}</Td>
                     <Td><Badge variant="secondary" className="font-normal">{it.channelOpenTo}</Badge></Td>
+                    <Td className="whitespace-nowrap">{it.productOwner || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.closeDate || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.changesDate || "—"}</Td>
                     <Td>{it.changesMade || "—"}</Td>
@@ -429,6 +434,7 @@ const CatalogTable: React.FC<{
                         {!isClosed && (
                           <ModifyDialog
                             item={it}
+                            existingItems={items}
                             onSubmit={(draft, reason) => onModify(it, draft, reason)}
                           />
                         )}
@@ -456,11 +462,84 @@ const Td: React.FC<{ children: React.ReactNode; className?: string }> = ({ child
   <td className={`px-2 py-2 text-xs ${className || ""}`}>{children}</td>
 );
 
-// ----- Add Dialog (full form, no change/close fields) -----
-const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => void }> = ({ onSubmit }) => {
+// Reusable select that supports defining a new option inline
+const OptionSelect: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+}> = ({ value, onChange, options, placeholder }) => {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const opts = Array.from(new Set([...(options || []), value].filter(Boolean)));
+
+  if (adding) {
+    return (
+      <div className="flex gap-1">
+        <Input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Define new value"
+        />
+        <Button
+          size="sm"
+          onClick={() => {
+            const v = draft.trim();
+            if (!v) return toast.error("Enter a value");
+            onChange(v);
+            setAdding(false);
+            setDraft("");
+          }}
+        >
+          OK
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => { setAdding(false); setDraft(""); }}>×</Button>
+      </div>
+    );
+  }
+  return (
+    <Select
+      value={value || undefined}
+      onValueChange={(v) => {
+        if (v === "__add_new__") setAdding(true);
+        else onChange(v);
+      }}
+    >
+      <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
+      <SelectContent>
+        {opts.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+        <SelectItem value="__add_new__" className="text-primary font-medium">+ Define new…</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+};
+
+// ----- Add Dialog -----
+const AddDialog: React.FC<{
+  onSubmit: (draft: CatalogItem, reason: string) => void;
+  existingItems: CatalogItem[];
+  defaultOwner: string;
+}> = ({ onSubmit, existingItems, defaultOwner }) => {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<CatalogItem>(() => emptyItem());
+  const [draft, setDraft] = useState<CatalogItem>(() => emptyItem(defaultOwner));
   const [reason, setReason] = useState("");
+
+  React.useEffect(() => {
+    if (open) {
+      setDraft(emptyItem(defaultOwner));
+      setReason("");
+    }
+  }, [open, defaultOwner]);
+
+  const productTypes = useMemo(
+    () => Array.from(new Set(["Onetime", "Renewal", "Saapati", ...existingItems.map((i) => i.productType)])),
+    [existingItems]
+  );
+  const channels = useMemo(
+    () => Array.from(new Set(["All", "USSD", "App", "Web", ...existingItems.map((i) => i.channelOpenTo)])),
+    [existingItems]
+  );
 
   const update = (patch: Partial<CatalogItem>) => setDraft((d) => ({ ...d, ...patch }));
   const updateResource = (idx: number, patch: Partial<CatalogResource>) =>
@@ -475,8 +554,6 @@ const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => vo
     if (!reason.trim()) return toast.error("Reason is required for approval");
     onSubmit(draft, reason);
     setOpen(false);
-    setReason("");
-    setDraft(emptyItem());
   };
 
   return (
@@ -494,14 +571,7 @@ const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => vo
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
           <Field label="Product Type">
-            <Select value={draft.productType} onValueChange={(v) => update({ productType: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Onetime">Onetime</SelectItem>
-                <SelectItem value="Renewal">Renewal</SelectItem>
-                <SelectItem value="Saapati">Saapati</SelectItem>
-              </SelectContent>
-            </Select>
+            <OptionSelect value={draft.productType} onChange={(v) => update({ productType: v })} options={productTypes} />
           </Field>
           <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
           <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
@@ -509,15 +579,10 @@ const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => vo
           <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
           <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
           <Field label="Channel Open to">
-            <Select value={draft.channelOpenTo} onValueChange={(v) => update({ channelOpenTo: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All</SelectItem>
-                <SelectItem value="USSD">USSD</SelectItem>
-                <SelectItem value="App">App</SelectItem>
-                <SelectItem value="Web">Web</SelectItem>
-              </SelectContent>
-            </Select>
+            <OptionSelect value={draft.channelOpenTo} onChange={(v) => update({ channelOpenTo: v })} options={channels} />
+          </Field>
+          <Field label="Product Owner" className="sm:col-span-2">
+            <Input value={draft.productOwner || ""} onChange={(e) => update({ productOwner: e.target.value })} placeholder="Defaults to logged-in user" />
           </Field>
         </div>
 
@@ -551,24 +616,31 @@ const AddDialog: React.FC<{ onSubmit: (draft: CatalogItem, reason: string) => vo
   );
 };
 
-// ----- Modify Dialog (full edit of all fields) -----
+// ----- Modify Dialog (full edit; no "Changes Made" input — auto-generated from diff) -----
 const ModifyDialog: React.FC<{
   item: CatalogItem;
+  existingItems: CatalogItem[];
   onSubmit: (draft: CatalogItem, reason: string) => void;
-}> = ({ item, onSubmit }) => {
+}> = ({ item, existingItems, onSubmit }) => {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<CatalogItem>(item);
-  const [changesMade, setChangesMade] = useState("");
   const [reason, setReason] = useState("");
 
-  // Reset form whenever the dialog is opened with a fresh copy of the item
   React.useEffect(() => {
     if (open) {
       setDraft({ ...item, resources: item.resources.map((r) => ({ ...r })) });
-      setChangesMade("");
       setReason("");
     }
   }, [open, item]);
+
+  const productTypes = useMemo(
+    () => Array.from(new Set(["Onetime", "Renewal", "Saapati", ...existingItems.map((i) => i.productType)])),
+    [existingItems]
+  );
+  const channels = useMemo(
+    () => Array.from(new Set(["All", "USSD", "App", "Web", ...existingItems.map((i) => i.channelOpenTo)])),
+    [existingItems]
+  );
 
   const update = (patch: Partial<CatalogItem>) => setDraft((d) => ({ ...d, ...patch }));
   const updateResource = (idx: number, patch: Partial<CatalogResource>) =>
@@ -579,10 +651,8 @@ const ModifyDialog: React.FC<{
     setDraft((d) => ({ ...d, resources: d.resources.filter((_, i) => i !== idx) }));
 
   const handleSubmit = () => {
-    if (!changesMade.trim())
-      return toast.error("Please summarise what is being changed (Changes Made).");
     if (!reason.trim()) return toast.error("Reason is required for approval");
-    onSubmit({ ...draft, changesMade }, reason);
+    onSubmit(draft, reason);
     setOpen(false);
   };
 
@@ -597,22 +667,15 @@ const ModifyDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>Request Modification</DialogTitle>
           <DialogDescription>
-            Editing <span className="font-semibold">{item.productName}</span>. Update any field.
-            Change date and reviewer are filled in automatically when approved.
+            Editing <span className="font-semibold">{item.productName}</span>. Update any field — change summary
+            is generated automatically from the diff once approved.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
           <Field label="Product Type">
-            <Select value={draft.productType} onValueChange={(v) => update({ productType: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Onetime">Onetime</SelectItem>
-                <SelectItem value="Renewal">Renewal</SelectItem>
-                <SelectItem value="Saapati">Saapati</SelectItem>
-              </SelectContent>
-            </Select>
+            <OptionSelect value={draft.productType} onChange={(v) => update({ productType: v })} options={productTypes} />
           </Field>
           <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
           <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
@@ -620,15 +683,10 @@ const ModifyDialog: React.FC<{
           <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
           <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
           <Field label="Channel Open to">
-            <Select value={draft.channelOpenTo} onValueChange={(v) => update({ channelOpenTo: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All</SelectItem>
-                <SelectItem value="USSD">USSD</SelectItem>
-                <SelectItem value="App">App</SelectItem>
-                <SelectItem value="Web">Web</SelectItem>
-              </SelectContent>
-            </Select>
+            <OptionSelect value={draft.channelOpenTo} onChange={(v) => update({ channelOpenTo: v })} options={channels} />
+          </Field>
+          <Field label="Product Owner" className="sm:col-span-2">
+            <Input value={draft.productOwner || ""} onChange={(e) => update({ productOwner: e.target.value })} />
           </Field>
         </div>
 
@@ -649,13 +707,6 @@ const ModifyDialog: React.FC<{
           </div>
         </div>
 
-        <Field label="Changes Made — short summary (required)">
-          <Input
-            value={changesMade}
-            onChange={(e) => setChangesMade(e.target.value)}
-            placeholder="e.g. Changed voice from 50 to 100, updated price"
-          />
-        </Field>
         <Field label="Reason / Description for approval (required)">
           <Textarea
             value={reason}
