@@ -404,6 +404,7 @@ const CatalogTable: React.FC<{
                     <Td>{it.productValidity}</Td>
                     <Td className="whitespace-nowrap">{it.liveDate}</Td>
                     <Td><Badge variant="secondary" className="font-normal">{it.channelOpenTo}</Badge></Td>
+                    <Td className="whitespace-nowrap">{it.productOwner || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.closeDate || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.changesDate || "—"}</Td>
                     <Td>{it.changesMade || "—"}</Td>
