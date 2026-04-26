@@ -434,6 +434,7 @@ const CatalogTable: React.FC<{
                         {!isClosed && (
                           <ModifyDialog
                             item={it}
+                            existingItems={items}
                             onSubmit={(draft, reason) => onModify(it, draft, reason)}
                           />
                         )}
