@@ -6,6 +6,8 @@ const nodemailer = require("nodemailer");
 
 const PORT = Number(process.env.PORT || 3000);
 const TASKS_FILE = path.join(__dirname, "tasks.json");
+const CATALOG_FILE = path.join(__dirname, "catalog.json");
+const CATALOG_REQ_FILE = path.join(__dirname, "catalog-requests.json");
 const DIST_DIR = path.join(__dirname, "dist");
 const ROLE_MAPPING_FILE = path.join(__dirname, "role-mapping.json");
 
