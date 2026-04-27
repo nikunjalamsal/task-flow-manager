@@ -40,8 +40,17 @@ import {
   History,
   Filter,
   Download,
+  Database,
+  Phone,
+  MessageSquare,
+  Infinity as InfinityIcon,
+  Hash,
+  Link2,
+  PlusCircle,
+  PencilLine,
+  XCircle as XCircleIcon,
 } from "lucide-react";
-import { CatalogItem, CatalogResource } from "@/lib/catalogTypes";
+import { CatalogItem, CatalogResource, CatalogChangeLog } from "@/lib/catalogTypes";
 import { exportCatalogToExcel } from "@/lib/exportCatalogExcel";
 import { toast } from "sonner";
 
@@ -67,6 +76,270 @@ const emptyItem = (owner = ""): CatalogItem => ({
   createdAt: new Date().toISOString(),
   status: "live",
 });
+
+// Required-field label helper (red asterisk)
+const RField: React.FC<{ label: string; children: React.ReactNode; className?: string; required?: boolean }> = ({
+  label,
+  children,
+  className,
+  required = true,
+}) => (
+  <div className={`space-y-1 ${className || ""}`}>
+    <Label className="text-xs">
+      {label} {required && <span className="text-destructive">*</span>}
+    </Label>
+    {children}
+  </div>
+);
+
+// Free-form numeric price input (no spinner buttons)
+const PriceInput: React.FC<{ value: number; onChange: (n: number) => void }> = ({ value, onChange }) => {
+  const [text, setText] = useState<string>(value ? String(value) : "");
+  React.useEffect(() => {
+    setText(value ? String(value) : "");
+  }, [value]);
+  return (
+    <div className="relative">
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+        Rs.
+      </span>
+      <Input
+        type="text"
+        inputMode="decimal"
+        pattern="[0-9]*\.?[0-9]*"
+        className="pl-9"
+        value={text}
+        placeholder="0"
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9.]/g, "");
+          // allow only one dot
+          const parts = v.split(".");
+          const cleaned = parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : v;
+          setText(cleaned);
+          const n = Number(cleaned);
+          onChange(isNaN(n) ? 0 : n);
+        }}
+      />
+    </div>
+  );
+};
+
+// ----- Resource display in the table: clean chips -----
+const isLink = (s: string) => /^(https?:\/\/|www\.)/i.test(s.trim());
+
+const resourceTone = (name: string): { bg: string; text: string; icon: React.ReactNode } => {
+  const n = (name || "").toLowerCase();
+  if (n.includes("data")) return { bg: "bg-sky-100", text: "text-sky-800", icon: <Database className="h-3 w-3" /> };
+  if (n.includes("voice")) return { bg: "bg-violet-100", text: "text-violet-800", icon: <Phone className="h-3 w-3" /> };
+  if (n.includes("sms")) return { bg: "bg-amber-100", text: "text-amber-800", icon: <MessageSquare className="h-3 w-3" /> };
+  if (n.includes("unlim")) return { bg: "bg-emerald-100", text: "text-emerald-800", icon: <InfinityIcon className="h-3 w-3" /> };
+  return { bg: "bg-slate-100", text: "text-slate-800", icon: <Hash className="h-3 w-3" /> };
+};
+
+const ResourceList: React.FC<{ resources: CatalogResource[] }> = ({ resources }) => {
+  if (!resources || resources.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <ul className="flex flex-col gap-1 min-w-[220px] max-w-[320px]">
+      {resources.map((r, i) => {
+        const tone = resourceTone(r.subAccountName);
+        return (
+          <li
+            key={i}
+            className={`flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-[11px]`}
+          >
+            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${tone.bg} ${tone.text}`}>
+              {tone.icon}
+              {r.subAccountName || "—"}
+            </span>
+            {r.subAccountId && (
+              <span className="font-mono text-[10px] text-muted-foreground">#{r.subAccountId}</span>
+            )}
+            <span className="ml-auto font-mono text-foreground break-all">
+              {isLink(r.resource) ? (
+                <a
+                  href={r.resource.startsWith("http") ? r.resource : `https://${r.resource}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <Link2 className="h-3 w-3" /> Link
+                </a>
+              ) : (
+                r.resource || "—"
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+// ----- Resource editor used in Add/Modify dialogs -----
+const ResourceEditor: React.FC<{
+  resources: CatalogResource[];
+  onUpdate: (idx: number, patch: Partial<CatalogResource>) => void;
+  onAdd: () => void;
+  onRemove: (idx: number) => void;
+}> = ({ resources, onUpdate, onAdd, onRemove }) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between">
+      <Label>
+        Product Resources <span className="text-destructive">*</span>
+      </Label>
+      <Button size="sm" variant="outline" onClick={onAdd} className="gap-1 h-7 px-2">
+        <Plus className="h-3 w-3" /> Add resource
+      </Button>
+    </div>
+    <div className="space-y-2">
+      {resources.map((r, i) => {
+        const tone = resourceTone(r.subAccountName);
+        return (
+          <div
+            key={i}
+            className="rounded-lg border border-border bg-muted/30 p-2"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold ${tone.bg} ${tone.text}`}>
+                {tone.icon}
+                {r.subAccountName || `Resource #${i + 1}`}
+              </span>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onRemove(i)}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-12 gap-2">
+              <div className="col-span-3">
+                <Label className="text-[11px]">
+                  Sub a/c id <span className="text-destructive">*</span>
+                </Label>
+                <Input value={r.subAccountId} onChange={(e) => onUpdate(i, { subAccountId: e.target.value })} />
+              </div>
+              <div className="col-span-4">
+                <Label className="text-[11px]">
+                  Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={r.subAccountName}
+                  placeholder="e.g. Data, Voice, SMS"
+                  onChange={(e) => onUpdate(i, { subAccountName: e.target.value })}
+                />
+              </div>
+              <div className="col-span-5">
+                <Label className="text-[11px]">
+                  Value or Link <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={r.resource}
+                  placeholder="e.g. 104857600 or https://…"
+                  onChange={(e) => onUpdate(i, { resource: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+// ----- History timeline dialog -----
+const actionMeta: Record<NonNullable<CatalogChangeLog["action"]>, { label: string; tone: string; icon: React.ReactNode }> = {
+  added: { label: "ADDED", tone: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: <PlusCircle className="h-3.5 w-3.5" /> },
+  modified: { label: "MODIFIED", tone: "bg-amber-100 text-amber-700 border-amber-200", icon: <PencilLine className="h-3.5 w-3.5" /> },
+  closed: { label: "CLOSED", tone: "bg-slate-200 text-slate-700 border-slate-300", icon: <Lock className="h-3.5 w-3.5" /> },
+  deleted: { label: "DELETED", tone: "bg-red-100 text-red-700 border-red-200", icon: <XCircleIcon className="h-3.5 w-3.5" /> },
+};
+
+const HistoryDialog: React.FC<{ item: CatalogItem }> = ({ item }) => {
+  const [open, setOpen] = useState(false);
+  const log = [...item.changeLog].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1 h-7 px-2 text-xs">
+          <History className="h-3 w-3" /> History {log.length > 0 && <span className="text-muted-foreground">({log.length})</span>}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-4 w-4" /> Change History — {item.productName}
+          </DialogTitle>
+          <DialogDescription>Each entry below represents a single approved change, in reverse chronological order.</DialogDescription>
+        </DialogHeader>
+        {log.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            No history yet.
+          </div>
+        ) : (
+          <ol className="relative border-l-2 border-border ml-3 space-y-4 pl-5">
+            {log.map((entry) => {
+              const meta = entry.action ? actionMeta[entry.action] : actionMeta.modified;
+              return (
+                <li key={entry.id} className="relative">
+                  <span className={`absolute -left-[31px] top-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full border ${meta.tone}`}>
+                    {meta.icon}
+                  </span>
+                  <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold border ${meta.tone}`}>
+                        {meta.icon} {meta.label}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{new Date(entry.date).toLocaleString()}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[12px]">
+                      <div><span className="text-muted-foreground">Requested by:</span> <span className="font-medium">{entry.requestedBy}</span></div>
+                      <div><span className="text-muted-foreground">Approved by:</span> <span className="font-medium">{entry.changeMadeBy}</span></div>
+                    </div>
+                    {entry.fieldChanges && entry.fieldChanges.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Field changes</p>
+                        <ul className="space-y-0.5">
+                          {entry.fieldChanges.map((c, i) => (
+                            <li key={i} className="text-[12px]">
+                              <span className="font-medium">{c.label}:</span>{" "}
+                              <span className="line-through text-muted-foreground">{c.from || "(empty)"}</span>
+                              {" → "}
+                              <span className="font-semibold text-foreground">{c.to || "(empty)"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {entry.resourceChanges && entry.resourceChanges.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Resource changes</p>
+                        <ul className="space-y-0.5">
+                          {entry.resourceChanges.map((c, i) => (
+                            <li key={i} className="text-[12px] font-mono">
+                              <span className="font-semibold">{c.label}:</span>{" "}
+                              <span className="line-through text-muted-foreground">{c.from || "(empty)"}</span>
+                              {" → "}
+                              <span className="font-semibold text-foreground">{c.to || "(empty)"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {entry.description && (
+                      <div className="mt-2 text-[12px]">
+                        <span className="text-muted-foreground">Note:</span> <span className="whitespace-pre-wrap">{entry.description}</span>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const CatalogPage: React.FC = () => {
   const { user, logout, isManager } = useAuth();
@@ -255,7 +528,6 @@ const CatalogTable: React.FC<{
         it.closeDate,
         it.changesMade,
         it.changeMadeBy,
-        it.changeDetail,
         ...it.resources.flatMap((r) => [r.subAccountId, r.subAccountName, r.resource]),
       ]
         .filter(Boolean)
@@ -267,7 +539,6 @@ const CatalogTable: React.FC<{
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="rounded-xl border border-border bg-card p-3 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[220px]">
           <Label className="text-xs flex items-center gap-1 mb-1"><Search className="h-3 w-3" /> Search</Label>
@@ -338,7 +609,6 @@ const CatalogTable: React.FC<{
                 <Th>Changes Date</Th>
                 <Th>Changes Made</Th>
                 <Th>Change By</Th>
-                <Th>Change Detail</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -354,83 +624,32 @@ const CatalogTable: React.FC<{
                         : "bg-emerald-500/5 hover:bg-emerald-500/10"
                     }`}
                   >
-                    <Td>
-                      <span className="font-semibold">{it.sn}</span>
-                    </Td>
+                    <Td><span className="font-semibold">{it.sn}</span></Td>
                     <Td>
                       {isClosed ? (
                         <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30">
                           <Lock className="h-3 w-3 mr-1" /> Closed
                         </Badge>
                       ) : (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
-                          ● Live
-                        </Badge>
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">● Live</Badge>
                       )}
                     </Td>
                     <Td><span className="font-medium text-foreground">{it.productName}</span></Td>
-                    <Td>
-                      <Badge variant="outline" className="font-normal">{it.productType}</Badge>
-                    </Td>
+                    <Td><Badge variant="outline" className="font-normal">{it.productType}</Badge></Td>
                     <Td className="font-mono text-[11px]">{it.productId}</Td>
                     <Td className="font-mono text-[11px]">{it.productCode}</Td>
-                    <Td className="text-right font-semibold tabular-nums">
-                      {it.productPrice}
-                    </Td>
-                    <Td>
-                      <table className="text-[11px] border border-border rounded overflow-hidden">
-                        <tbody>
-                          <tr className="bg-muted/40">
-                            <td className="border border-border px-1.5 py-0.5 font-medium">Sub a/c id</td>
-                            {it.resources.map((r, i) => (
-                              <td key={i} className="border border-border px-1.5 py-0.5">{r.subAccountId}</td>
-                            ))}
-                          </tr>
-                          <tr>
-                            <td className="border border-border px-1.5 py-0.5 font-medium">Name</td>
-                            {it.resources.map((r, i) => (
-                              <td key={i} className="border border-border px-1.5 py-0.5">{r.subAccountName}</td>
-                            ))}
-                          </tr>
-                          <tr>
-                            <td className="border border-border px-1.5 py-0.5 font-medium">Resource</td>
-                            {it.resources.map((r, i) => (
-                              <td key={i} className="border border-border px-1.5 py-0.5">{r.resource}</td>
-                            ))}
-                          </tr>
-                        </tbody>
-                      </table>
-                    </Td>
+                    <Td className="text-right font-semibold tabular-nums">{it.productPrice}</Td>
+                    <Td><ResourceList resources={it.resources} /></Td>
                     <Td>{it.productValidity}</Td>
                     <Td className="whitespace-nowrap">{it.liveDate}</Td>
                     <Td><Badge variant="secondary" className="font-normal">{it.channelOpenTo}</Badge></Td>
                     <Td className="whitespace-nowrap">{it.productOwner || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.closeDate || "—"}</Td>
                     <Td className="whitespace-nowrap">{it.changesDate || "—"}</Td>
-                    <Td>{it.changesMade || "—"}</Td>
+                    <Td><div className="max-w-[260px] whitespace-pre-wrap text-[11px]">{it.changesMade || "—"}</div></Td>
                     <Td>{it.changeMadeBy || "—"}</Td>
                     <Td>
-                      <div className="whitespace-pre-wrap text-[11px] max-w-[260px]">{it.changeDetail || "—"}</div>
-                      {it.changeLog.length > 0 && (
-                        <details className="mt-2 text-[11px]">
-                          <summary className="cursor-pointer text-primary inline-flex items-center gap-1">
-                            <History className="h-3 w-3" /> History ({it.changeLog.length})
-                          </summary>
-                          <ul className="mt-1 space-y-1 max-w-[260px]">
-                            {it.changeLog.map((l) => (
-                              <li key={l.id} className="border-l-2 border-primary pl-2">
-                                <div className="font-medium">{new Date(l.date).toLocaleString()}</div>
-                                <div>Requested: {l.requestedBy}</div>
-                                <div>By: {l.changeMadeBy}</div>
-                                <div className="whitespace-pre-wrap">{l.description}</div>
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                    </Td>
-                    <Td>
-                      <div className="flex flex-col gap-1 min-w-[110px]">
+                      <div className="flex flex-col gap-1 min-w-[120px]">
                         {!isClosed && (
                           <ModifyDialog
                             item={it}
@@ -442,6 +661,7 @@ const CatalogTable: React.FC<{
                           <CloseDialog item={it} onConfirm={(reason) => onClose(it, reason)} />
                         )}
                         <DeleteDialog item={it} onConfirm={(reason) => onDelete(it, reason)} />
+                        <HistoryDialog item={it} />
                       </div>
                     </Td>
                   </tr>
@@ -550,7 +770,21 @@ const AddDialog: React.FC<{
     setDraft((d) => ({ ...d, resources: d.resources.filter((_, i) => i !== idx) }));
 
   const handleSubmit = () => {
-    if (!draft.productName.trim()) return toast.error("Product name is required");
+    if (!draft.productName.trim()) return toast.error("Product Name is required");
+    if (!draft.productType.trim()) return toast.error("Product Type is required");
+    if (!draft.productId.trim()) return toast.error("Product ID is required");
+    if (!draft.productCode.trim()) return toast.error("Product Code is required");
+    if (!draft.productPrice || draft.productPrice <= 0) return toast.error("Product Price is required");
+    if (!draft.productValidity.trim()) return toast.error("Product Validity is required");
+    if (!draft.liveDate.trim()) return toast.error("Live Date is required");
+    if (!draft.channelOpenTo.trim()) return toast.error("Channel is required");
+    if (!(draft.productOwner || "").trim()) return toast.error("Product Owner is required");
+    if (draft.resources.length === 0) return toast.error("Add at least one resource");
+    for (const r of draft.resources) {
+      if (!r.subAccountId.trim() || !r.subAccountName.trim() || !r.resource.trim()) {
+        return toast.error("All resource fields (Sub a/c id, Name, Value/Link) are required");
+      }
+    }
     if (!reason.trim()) return toast.error("Reason is required for approval");
     onSubmit(draft, reason);
     setOpen(false);
@@ -566,46 +800,38 @@ const AddDialog: React.FC<{
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Request New Catalog Item</DialogTitle>
-          <DialogDescription>Fill in the product details. Submitted for manager approval.</DialogDescription>
+          <DialogDescription>
+            Fill in the product details. Fields marked <span className="text-destructive">*</span> are required.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
-          <Field label="Product Type">
+          <RField label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></RField>
+          <RField label="Product Type">
             <OptionSelect value={draft.productType} onChange={(v) => update({ productType: v })} options={productTypes} />
-          </Field>
-          <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
-          <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
-          <Field label="Product Price"><Input type="number" value={draft.productPrice} onChange={(e) => update({ productPrice: Number(e.target.value) })} /></Field>
-          <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
-          <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
-          <Field label="Channel Open to">
+          </RField>
+          <RField label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></RField>
+          <RField label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></RField>
+          <RField label="Product Price"><PriceInput value={draft.productPrice} onChange={(n) => update({ productPrice: n })} /></RField>
+          <RField label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></RField>
+          <RField label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></RField>
+          <RField label="Channel Open to">
             <OptionSelect value={draft.channelOpenTo} onChange={(v) => update({ channelOpenTo: v })} options={channels} />
-          </Field>
-          <Field label="Product Owner" className="sm:col-span-2">
+          </RField>
+          <RField label="Product Owner" className="sm:col-span-2">
             <Input value={draft.productOwner || ""} onChange={(e) => update({ productOwner: e.target.value })} placeholder="Defaults to logged-in user" />
-          </Field>
+          </RField>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Product Resources</Label>
-            <Button size="sm" variant="outline" onClick={addResource} className="gap-1 h-7 px-2"><Plus className="h-3 w-3" /> Add</Button>
-          </div>
-          <div className="space-y-2">
-            {draft.resources.map((r, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-3"><Label className="text-xs">Sub account id</Label><Input value={r.subAccountId} onChange={(e) => updateResource(i, { subAccountId: e.target.value })} /></div>
-                <div className="col-span-4"><Label className="text-xs">Subaccount name</Label><Input value={r.subAccountName} onChange={(e) => updateResource(i, { subAccountName: e.target.value })} /></div>
-                <div className="col-span-4"><Label className="text-xs">Resource</Label><Input value={r.resource} onChange={(e) => updateResource(i, { resource: e.target.value })} /></div>
-                <div className="col-span-1"><Button size="sm" variant="ghost" onClick={() => removeResource(i)}><Trash2 className="h-3 w-3" /></Button></div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ResourceEditor
+          resources={draft.resources}
+          onUpdate={updateResource}
+          onAdd={addResource}
+          onRemove={removeResource}
+        />
 
-        <Field label="Reason / Description for approval (required)">
+        <RField label="Reason / Description for approval">
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why this product needs to be added..." rows={3} />
-        </Field>
+        </RField>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -616,7 +842,7 @@ const AddDialog: React.FC<{
   );
 };
 
-// ----- Modify Dialog (full edit; no "Changes Made" input — auto-generated from diff) -----
+// ----- Modify Dialog -----
 const ModifyDialog: React.FC<{
   item: CatalogItem;
   existingItems: CatalogItem[];
@@ -651,6 +877,21 @@ const ModifyDialog: React.FC<{
     setDraft((d) => ({ ...d, resources: d.resources.filter((_, i) => i !== idx) }));
 
   const handleSubmit = () => {
+    if (!draft.productName.trim()) return toast.error("Product Name is required");
+    if (!draft.productType.trim()) return toast.error("Product Type is required");
+    if (!draft.productId.trim()) return toast.error("Product ID is required");
+    if (!draft.productCode.trim()) return toast.error("Product Code is required");
+    if (!draft.productPrice || draft.productPrice <= 0) return toast.error("Product Price is required");
+    if (!draft.productValidity.trim()) return toast.error("Product Validity is required");
+    if (!draft.liveDate.trim()) return toast.error("Live Date is required");
+    if (!draft.channelOpenTo.trim()) return toast.error("Channel is required");
+    if (!(draft.productOwner || "").trim()) return toast.error("Product Owner is required");
+    if (draft.resources.length === 0) return toast.error("Add at least one resource");
+    for (const r of draft.resources) {
+      if (!r.subAccountId.trim() || !r.subAccountName.trim() || !r.resource.trim()) {
+        return toast.error("All resource fields (Sub a/c id, Name, Value/Link) are required");
+      }
+    }
     if (!reason.trim()) return toast.error("Reason is required for approval");
     onSubmit(draft, reason);
     setOpen(false);
@@ -667,54 +908,43 @@ const ModifyDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>Request Modification</DialogTitle>
           <DialogDescription>
-            Editing <span className="font-semibold">{item.productName}</span>. Update any field — change summary
-            is generated automatically from the diff once approved.
+            Editing <span className="font-semibold">{item.productName}</span>. Fields marked <span className="text-destructive">*</span> are required.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></Field>
-          <Field label="Product Type">
+          <RField label="Product Name"><Input value={draft.productName} onChange={(e) => update({ productName: e.target.value })} /></RField>
+          <RField label="Product Type">
             <OptionSelect value={draft.productType} onChange={(v) => update({ productType: v })} options={productTypes} />
-          </Field>
-          <Field label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></Field>
-          <Field label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></Field>
-          <Field label="Product Price"><Input type="number" value={draft.productPrice} onChange={(e) => update({ productPrice: Number(e.target.value) })} /></Field>
-          <Field label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></Field>
-          <Field label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></Field>
-          <Field label="Channel Open to">
+          </RField>
+          <RField label="Product ID"><Input value={draft.productId} onChange={(e) => update({ productId: e.target.value })} /></RField>
+          <RField label="Product Code"><Input value={draft.productCode} onChange={(e) => update({ productCode: e.target.value })} /></RField>
+          <RField label="Product Price"><PriceInput value={draft.productPrice} onChange={(n) => update({ productPrice: n })} /></RField>
+          <RField label="Product Validity"><Input value={draft.productValidity} onChange={(e) => update({ productValidity: e.target.value })} placeholder="e.g. 30 day" /></RField>
+          <RField label="Live Date"><Input type="date" value={draft.liveDate} onChange={(e) => update({ liveDate: e.target.value })} /></RField>
+          <RField label="Channel Open to">
             <OptionSelect value={draft.channelOpenTo} onChange={(v) => update({ channelOpenTo: v })} options={channels} />
-          </Field>
-          <Field label="Product Owner" className="sm:col-span-2">
+          </RField>
+          <RField label="Product Owner" className="sm:col-span-2">
             <Input value={draft.productOwner || ""} onChange={(e) => update({ productOwner: e.target.value })} />
-          </Field>
+          </RField>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Product Resources</Label>
-            <Button size="sm" variant="outline" onClick={addResource} className="gap-1 h-7 px-2"><Plus className="h-3 w-3" /> Add</Button>
-          </div>
-          <div className="space-y-2">
-            {draft.resources.map((r, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-3"><Label className="text-xs">Sub account id</Label><Input value={r.subAccountId} onChange={(e) => updateResource(i, { subAccountId: e.target.value })} /></div>
-                <div className="col-span-4"><Label className="text-xs">Subaccount name</Label><Input value={r.subAccountName} onChange={(e) => updateResource(i, { subAccountName: e.target.value })} /></div>
-                <div className="col-span-4"><Label className="text-xs">Resource</Label><Input value={r.resource} onChange={(e) => updateResource(i, { resource: e.target.value })} /></div>
-                <div className="col-span-1"><Button size="sm" variant="ghost" onClick={() => removeResource(i)}><Trash2 className="h-3 w-3" /></Button></div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ResourceEditor
+          resources={draft.resources}
+          onUpdate={updateResource}
+          onAdd={addResource}
+          onRemove={removeResource}
+        />
 
-        <Field label="Reason / Description for approval (required)">
+        <RField label="Reason / Description for approval">
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Why this change is needed..."
             rows={3}
           />
-        </Field>
+        </RField>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -724,13 +954,6 @@ const ModifyDialog: React.FC<{
     </Dialog>
   );
 };
-
-const Field: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => (
-  <div className={`space-y-1 ${className || ""}`}>
-    <Label className="text-xs">{label}</Label>
-    {children}
-  </div>
-);
 
 // ----- Close Dialog -----
 const CloseDialog: React.FC<{ item: CatalogItem; onConfirm: (reason: string) => void }> = ({ item, onConfirm }) => {
