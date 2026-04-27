@@ -14,6 +14,11 @@ export interface CatalogChangeLog {
   changeMadeBy: string;
   description: string;
   summary: string; // e.g. "Changed voice from 50 to 100"
+  action?: "added" | "modified" | "closed" | "deleted";
+  // For modify actions: structured field-level diffs
+  fieldChanges?: Array<{ label: string; from: string; to: string }>;
+  // For modify actions: structured resource diffs
+  resourceChanges?: Array<{ label: string; from: string; to: string }>;
 }
 
 export interface CatalogItem {
@@ -52,7 +57,6 @@ export interface CatalogRequest {
   requestedById: string;
   requestedAt: string;
   reason: string;
-  // for add/modify: full target item; for delete/modify: existing itemId
   itemId?: string;
   draft?: CatalogItem;
   reviewedBy?: string;
