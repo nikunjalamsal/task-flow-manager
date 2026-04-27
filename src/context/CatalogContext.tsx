@@ -53,9 +53,11 @@ const seedItems = (): CatalogItem[] => [
   },
 ];
 
-// Build a diff string between previous and new item: "Field: A → B"
-const buildDiff = (prev: CatalogItem, next: CatalogItem): string => {
-  const lines: string[] = [];
+// Build structured field-level diffs for the changeLog entry.
+const buildFieldChanges = (
+  prev: CatalogItem,
+  next: CatalogItem
+): Array<{ label: string; from: string; to: string }> => {
   const fields: { key: keyof CatalogItem; label: string }[] = [
     { key: "productName", label: "Name" },
     { key: "productType", label: "Type" },
@@ -67,31 +69,44 @@ const buildDiff = (prev: CatalogItem, next: CatalogItem): string => {
     { key: "channelOpenTo", label: "Channel" },
     { key: "productOwner", label: "Product Owner" },
   ];
+  const out: Array<{ label: string; from: string; to: string }> = [];
   for (const f of fields) {
     const a = (prev as any)[f.key] ?? "";
     const b = (next as any)[f.key] ?? "";
-    if (String(a) !== String(b)) lines.push(`${f.label}: ${a || "(empty)"} → ${b || "(empty)"}`);
+    if (String(a) !== String(b)) out.push({ label: f.label, from: String(a || ""), to: String(b || "") });
   }
-  // Resources diff
-  const prevR = JSON.stringify(prev.resources);
-  const nextR = JSON.stringify(next.resources);
-  if (prevR !== nextR) {
-    const fmt = (rs: typeof prev.resources) =>
-      rs.map((r) => `${r.subAccountName || r.subAccountId}=${r.resource}`).join(", ");
-    lines.push(`Resources: ${fmt(prev.resources)} → ${fmt(next.resources)}`);
-  }
-  return lines.join("\n");
+  return out;
 };
 
-const fmtDate = (iso: string) => {
-  const d = new Date(iso);
-  return d.toLocaleString();
+// Build structured resource-level diffs (per sub-account).
+const buildResourceChanges = (
+  prev: CatalogItem,
+  next: CatalogItem
+): Array<{ label: string; from: string; to: string }> => {
+  const keyOf = (r: { subAccountId: string; subAccountName: string }) =>
+    r.subAccountName || r.subAccountId || "";
+  const prevMap = new Map(prev.resources.map((r) => [keyOf(r), r.resource]));
+  const nextMap = new Map(next.resources.map((r) => [keyOf(r), r.resource]));
+  const allKeys = Array.from(new Set([...prevMap.keys(), ...nextMap.keys()]));
+  const out: Array<{ label: string; from: string; to: string }> = [];
+  for (const k of allKeys) {
+    const a = prevMap.get(k) ?? "";
+    const b = nextMap.get(k) ?? "";
+    if (a !== b) out.push({ label: k || "(resource)", from: a, to: b });
+  }
+  return out;
 };
 
-// Append a formatted entry to change detail audit trail
-const appendDetail = (existing: string | undefined, entry: string): string => {
-  const prev = (existing || "").trim();
-  return prev ? `${prev}\n${entry}` : entry;
+// Compact one-line summary for display in tables/notifications.
+const buildSummary = (
+  fieldChanges: Array<{ label: string; from: string; to: string }>,
+  resourceChanges: Array<{ label: string; from: string; to: string }>
+): string => {
+  const parts = [
+    ...fieldChanges.map((c) => `${c.label}: ${c.from || "(empty)"} → ${c.to || "(empty)"}`),
+    ...resourceChanges.map((c) => `${c.label}: ${c.from || "(empty)"} → ${c.to || "(empty)"}`),
+  ];
+  return parts.join("; ");
 };
 
 export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -99,7 +114,6 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [requests, setRequests] = useState<CatalogRequest[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Initial load from server (with localStorage fallback)
   useEffect(() => {
     (async () => {
       const [serverItems, serverReqs] = await Promise.all([
@@ -118,7 +132,6 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     })();
   }, []);
 
-  // Persist on change (after initial load)
   useEffect(() => {
     if (!loaded) return;
     localStorage.setItem(CATALOG_KEY, JSON.stringify(items));
@@ -186,7 +199,6 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           if (r.type === "add" && r.draft) {
             const nextSn = (prevItems.reduce((m, i) => Math.max(m, i.sn), 0) || 0) + 1;
-            const detailEntry = `${fmtDate(nowIso)} — ADDED: Requested by ${r.requestedBy}, Approved by ${reviewerName}${comment ? ` — ${comment}` : ""}`;
             const log = [
               ...r.draft.changeLog,
               {
@@ -196,6 +208,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 changeMadeBy: reviewerName,
                 description: comment || "Item added.",
                 summary: "Added",
+                action: "added" as const,
               },
             ];
             return [
@@ -206,7 +219,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 sn: nextSn,
                 status: "live",
                 changeMadeBy: r.requestedBy,
-                changeDetail: detailEntry,
+                changeDetail: "",
                 changeLog: log,
               },
             ];
@@ -224,15 +237,16 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 closeReason: it.closeReason,
                 createdAt: it.createdAt,
               };
-              const diff = buildDiff(it, merged) || (r.draft!.changesMade || r.reason);
-              notifyChangesMade = diff;
-              const detailEntry = `${fmtDate(nowIso)} — MODIFIED: Requested by ${r.requestedBy}, Approved by ${reviewerName}\n${diff}${comment ? `\nNote: ${comment}` : ""}`;
+              const fieldChanges = buildFieldChanges(it, merged);
+              const resourceChanges = buildResourceChanges(it, merged);
+              const summary = buildSummary(fieldChanges, resourceChanges) || (r.draft!.changesMade || r.reason);
+              notifyChangesMade = summary;
               return {
                 ...merged,
                 changesDate: today,
-                changesMade: diff,
+                changesMade: summary,
                 changeMadeBy: r.requestedBy,
-                changeDetail: appendDetail(it.changeDetail, detailEntry),
+                changeDetail: "",
                 changeLog: [
                   ...it.changeLog,
                   {
@@ -241,7 +255,10 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     requestedBy: r.requestedBy,
                     changeMadeBy: reviewerName,
                     description: comment || r.reason,
-                    summary: diff,
+                    summary,
+                    action: "modified" as const,
+                    fieldChanges,
+                    resourceChanges,
                   },
                 ],
               };
@@ -251,7 +268,6 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (r.type === "close" && r.itemId) {
             return prevItems.map((it) => {
               if (it.id !== r.itemId) return it;
-              const detailEntry = `${fmtDate(nowIso)} — CLOSED: Requested by ${r.requestedBy}, Approved by ${reviewerName}\nReason: ${r.reason}${comment ? `\nNote: ${comment}` : ""}`;
               return {
                 ...it,
                 status: "closed",
@@ -260,7 +276,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 changesDate: today,
                 changesMade: "Closed",
                 changeMadeBy: r.requestedBy,
-                changeDetail: appendDetail(it.changeDetail, detailEntry),
+                changeDetail: "",
                 changeLog: [
                   ...it.changeLog,
                   {
@@ -270,6 +286,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     changeMadeBy: reviewerName,
                     description: comment || r.reason,
                     summary: "Closed",
+                    action: "closed" as const,
                   },
                 ],
               };
